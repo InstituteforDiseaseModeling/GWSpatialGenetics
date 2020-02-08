@@ -1,0 +1,28 @@
+
+# specificy directories
+raw_reads_directory: '/mnt/md0/guinea_worm/ena_downloads/ena_all/'
+output_directory: '/mnt/md0/guinea_worm/ngs_analyses/unmatched/mt'
+metadata_file: '/mnt/md0/guinea_worm/ngs_analyses/gw_enaChadMIT.txt'
+
+# specify parameters for TrimGalore -- automatically chcecks the adapter type
+trim_galore:
+  quality:  20    # default value
+  min_read_length: 30   # this is dependent on the technology used, most NGS is 100-150 so min of 30 is generous for throwing out reads
+
+reference_alignment:
+  genome_name: 'DmedinensisMitochondrionComplete.fasta' # include extension
+  genome_path: '/mnt/md0/guinea_worm/public_genomesGW/mt/'
+
+# gem_masking:
+#     kmer_size: 100
+#     mistmatch: 5
+
+variant_calling:
+  ploidy: 1
+
+variant_filter:
+  initial_QD_filter: 30.0
+  read_depth_min: 10.0
+  rank_sum: 3.1
+
+# snakemake -s gw_processing.snakefile --configfile configGW_mtAll.yaml --config iteration='2' --rerun-incomplete --jobs 100 --keep-going -np --latency-wait 30 
