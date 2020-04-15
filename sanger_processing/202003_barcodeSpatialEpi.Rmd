@@ -1,0 +1,148 @@
+---
+title: "Guinea worm mitochondrial DNA genomics - geospatial modeling "
+output: html_notebook
+---
+
+## Load libraries, scripts, and data
+
+```{r setup}
+# load libraries
+for(p in c('data.table', 'dplyr', 'tidyr', "ggplot2", "wesanderson")){
+  if(!p %in% installed.packages()[,1]){
+    install.packages(p)
+    library(p, character.only = TRUE)
+  }
+  library(p, character.only = TRUE)
+}
+
+# set global options
+options(datatable.fread.datatable=FALSE)
+options(stringsAsFactors = FALSE)
+
+# set directories
+code_dir <- "/mnt/md0/guinea_worm/mt_sanger"
+project_dir <- "/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/gw_bwaAlign/2020_newSeqs"
+
+# load functions
+source(paste(code_dir, "plotting_themeJ.R", sep="/"))
+source(paste(code_dir, "genSpatial_functions.R", sep="/"))
+
+```
+
+```{r load data}
+barcode_vars <- read.delim(paste(project_dir, "202003_geneBarcodes.txt", sep="/"), sep="\t")
+worm_meta <- read.delim(paste(project_dir, "202004_wormMetadata.txt", sep="/"), sep="\t")
+merged_meta <- dplyr::left_join(barcode_vars, worm_meta) 
+gw_comp <- data.table::fread(paste(project_dir, "202004_genePairwiseMetadata.txt", sep="/"), sep="\t")
+```
+
+## Compare within host similarity
+
+Some hosts had multiple worms. Is each worm within each host genetically identical?
+
+```{r host_sim}
+host_sim <- dplyr::filter(gw_comp, host_match == "TRUE" & yr_match =="TRUE") %>%
+  ggplot(aes(x=host_number.x, y=value, color=as.character(year.x))) + geom_point() +
+  labs(x="Host number", y="Genetic similarity")
+host_sim
+```
+
+This is interesting, I guess I expected each worm to be identical from the same host and never checked. A better check is whether within host trends are still higher than between host trends of worms that are close together. 
+
+```{r host_sim_comp}
+dplyr::filter(gw_comp, dist_m < 1000) %>%
+  ggplot(aes(x=value, fill=host_match)) + 
+  geom_histogram(position = 'identity', alpha = .5, bins=40) +
+  labs(x="Genetic similarity", y="Number of comparisons\n(< 100 meters between worms)")
+```
+
+### Emperical densities - Barcodes 
+
+We can compare the densities for geneti similarity between matching barcodes and non-matching barcodes and distance. Since humans overlap with dogs in barcodes but are not 
+
+```{r bc_match}
+bcAll_df <- distDensity_plots(gw_comp, "bcAll_density", project_dir)
+bcHum_df <- distDensity_plots( dplyr::filter(gw_comp, grepl("PD", worm1) & grepl("PD", worm2)), "bcHum_density", project_dir)
+bcDog_df <- distDensity_plots( dplyr::filter(gw_comp, !grepl("PD", worm1) & !grepl("PD", worm2)), "bcDog_density", project_dir)
+```
+
+Do any barcodes seem to have a stronger effect than others on this curve? It doesn't make sense to include barcodes that are found in low frequency.
+
+```{r ind_barcodes}
+# identify common barcodes
+gps_worms <-dplyr::filter(merged_meta, !is.na(latitude) & !is.na(longitude))
+barcode_counts <- data.frame(table(gps_worms$full_barcode), stringsAsFactors = F) %>% 
+  dplyr::arrange(desc(Freq)) %>%
+  dplyr::rename("full_barcode" = Var1, count = Freq) %>%
+  tibble::rowid_to_column("barcode_number")
+barcodes_keep <- dplyr::filter(barcode_counts, count >= 10) %>% .[["full_barcode"]]
+# set colors for common barcodes
+# bc_colors <- c(ggsci::pal_simpsons("springfield")(10), "grey50")
+ bc_colors <- c(ggsci::pal_futurama("planetexpress")(11)[-9], "grey50")
+
+# subset "common" barcodes from the comparisons
+comp_sub <- dplyr::filter(gw_comp, !(!full_barcode.x %in% barcodes_keep & bc_match=="TRUE")) %>%
+  dplyr::mutate(bc_group = ifelse(bc_match =="TRUE", full_barcode.x, "No shared barcode in pair.")) %>%
+  dplyr::left_join(., barcode_counts, by=c("bc_group" = "full_barcode")) %>%
+  dplyr::mutate(Barcode = ifelse(!is.na(barcode_number), paste(barcode_number, "(N =", count, "worms)"), "No common barcode in pair."),
+                Barcode = factor(Barcode, levels = gtools::mixedsort(unique(Barcode))))
+# write.table(comp_sub, paste(project_dir, "202003_genePairwiseCommonBC.txt", sep="/"), sep="\t", quote = F, row.names = F)
+  
+cdf <- ggplot(comp_sub, aes(x=dist_m/1000)) + 
+  stat_ecdf(aes(colour = Barcode), size=1) +
+  labs(x="Distance (km)",y="Cumulative density") +
+  scale_color_manual(values= bc_colors, name="Barcode\nnumber") 
+pdf <- ggplot(comp_sub, aes(x=dist_m/1000)) + 
+  stat_density(aes(fill = Barcode), position = "identity", alpha=0.75) +
+  labs(x="Distance (km)", y="Probability density") +
+  scale_fill_manual(values= bc_colors, name="Barcode\nnumber") 
+bc_df <- ggpubr::ggarrange(cdf, pdf, common.legend=TRUE, legend = "right")
+bc_df
+ggsave("bwa_bcInd.png", plot = bc_df, path = paste(project_dir, "plots", sep="/"), width = 8, height = 4, units = c("in"), dpi = 300)
+```
+
+For figure 1 in
+
+
+
+### Rarefaction curves
+
+For each worm, calculate the next closest worm and the barcode diversity.
+
+```{r rarefaction_function}
+gw_sub <- dplyr::select(gw_comp, worm1, full_barcode.x, worm2, full_barcode.y, dist_m) %>%
+  dplyr::filter(!is.na(dist_m))
+dist_worms <- unique(c(gw_sub$worm1, gw_sub$worm2))
+
+worm_rarefactionList <- lapply(setNames(dist_worms, dist_worms), function(worm){
+  worm_sub <- dplyr::filter(gw_sub, worm1 == worm | worm2 == worm) %>% dplyr::arrange(dist_m)
+  uniq_bc_counts <- bind_rows(lapply(1:nrow(worm_sub), function(i){
+    cbind.data.frame(
+      distance=worm_sub[i,]$dist_m, 
+      unique_barcodes=length(unique(c(worm_sub[1:i,]$full_barcode.x, worm_sub[1:i,]$full_barcode.y)))-1)
+  })) 
+  uniq_bc_countsRm <- cbind.data.frame(worm = worm, dplyr::group_by(uniq_bc_counts, distance) %>% top_n(1, unique_barcodes), 
+                                       stringsAsFactors=F)
+})
+worm_rarefaction <- unique(dplyr::bind_rows(worm_rarefactionList))
+```
+
+```{r rarefaction_plot}
+barcode_number   <- inner_join(dplyr::select(barcode_vars, worm, full_barcode), barcode_counts)
+worm_rarefaction <- dplyr::left_join(worm_rarefaction, barcode_number)
+  
+worm_rarefactionPlot <- worm_rarefaction %>% 
+  dplyr::mutate(color = ifelse(full_barcode %in% barcodes_keep, paste(barcode_number, "(N =", count, "worms)"), "Not common.\n(N < 10 worms)"),
+                color = factor(color, levels = gtools::mixedsort(unique(color)))) %>%  
+  ggplot(aes(x=distance/1000, y=unique_barcodes, group=worm)) +
+  geom_line(aes(color=color), alpha=0.5, size=1) +
+  labs(x="Distance (km)", y="Unique barcodes") +
+  scale_color_manual(values=bc_colors, name="Barcode") 
+ggsave("bwa_wormRarefaction.png", plot = worm_rarefactionPlot, path = paste(project_dir, "plots", sep="/"), width = 6, height = 4, units = c("in"), dpi = 300)
+ggsave("bwa_wormRarefactionInd.png", plot = worm_rarefactionPlot + facet_wrap(~color, ncol=4) + guides(color=F), 
+        path = paste(project_dir, "plots", sep="/"), width = 6, height = 4, units = c("in"), dpi = 300)
+rare_merged <-ggpubr::ggarrange(worm_rarefactionPlot + guides(color=F), worm_rarefactionPlot + facet_wrap(~color, ncol=4) + guides(color=F))
+ggsave("bwa_wormRarefactionMerged.png", plot = rare_merged, path = paste(project_dir, "plots", sep="/"), width = 8, height = 4, units = c("in"), dpi = 300)
+```
+
+

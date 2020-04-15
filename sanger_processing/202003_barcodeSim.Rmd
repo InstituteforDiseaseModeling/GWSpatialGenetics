@@ -1,0 +1,157 @@
+---
+title: "Guinea worm mitochondrial DNA genomics - calculating nucleotide similarity"
+output: html_notebook
+---
+
+## Load libraries, scripts, and data
+
+```{r setup}
+# load libraries
+for(p in c('data.table', 'dplyr', 'tidyr', 'protr', 'geosphere', "ggplot2")){
+  if(!p %in% installed.packages()[,1]){
+    install.packages(p)
+    library(p, character.only = TRUE)
+  }
+  library(p, character.only = TRUE)
+}
+
+# set global options
+options(datatable.fread.datatable=FALSE)
+options(stringsAsFactors = FALSE)
+
+# set directories
+code_dir <- "/mnt/md0/guinea_worm/mt_sanger"
+project_dir <- "/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/gw_bwaAlign/2020_newSeqs"
+
+# load functions
+source(paste(code_dir, "plotting_themeJ.R", sep="/"))
+source(paste(code_dir, "genSim_functions.R", sep="/"))
+```
+
+```{r load_data}
+# load barcodes 
+barcode_vars <- read.delim(paste(project_dir, "202003_geneBarcodes.txt", sep="/"), sep="\t")
+# create a sequenced name data frame to merge with national line lists 
+seq_worms <- cbind.data.frame(
+  worm = barcode_vars$worm,
+  year = as.integer(sapply(barcode_vars$worm, function(i){gsub(".*2", "2", unlist(strsplit(i, "_")))[1]})),
+  worm_number = sapply(barcode_vars$worm, function(i){unlist(strsplit(i, "_"))[4]}),
+  host_number = sapply(barcode_vars$worm, function(i){gsub("\\..*", "", unlist(strsplit(i, "_"))[4])})
+)
+
+# load national line and case merged data
+worm_meta <- data.table::fread('/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/sample_identifiers/202004_natLineCasesDuplicates.txt', sep="\t") 
+# merge
+# seq_metaMerge <- dplyr::left_join(seq_worms, worm_meta)
+# write.table(seq_metaMerge, paste(project_dir, "202004_wormMetadata.txt", sep="/"), sep="\t", quote = F, row.names = F)
+# ^ added some manual editing to the file 
+seq_metaMerge <- read.delim(paste(project_dir, "202004_wormMetadata.txt", sep="/"), sep="\t")
+```
+
+## Calculate nucleotide similarity (Pi metric)
+
+```{r sing_inc, eval=F}
+bc_list <- df2barcodeList(dplyr::select(barcode_vars, worm, full_barcode))
+bc_mat <- simMat(bc_list, 16 , names(bc_list))
+bc_df  <- simMat2df(bc_mat)
+write.table(bc_df, paste(project_dir, "202004_genePairwise.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+## Merge metadata 
+
+```{r merge_metadata}
+bc_df <- data.table::fread(paste(project_dir, "202004_genePairwise.txt", sep="/"), sep="\t")
+sim_merge <- pairwise_comp(bc_df, seq_metaMerge, barcode_vars) 
+dist_m <- sapply(1:nrow(sim_merge), function(x){
+  geosphere::distm(as.numeric(sim_merge[x,9:10]), 
+                   as.numeric(sim_merge[x,27:28]), fun=distHaversine)}) 
+gw_genSim <- cbind.data.frame(sim_merge, dist_m, stringsAsFactors=F)
+# write.table(gw_genSim, paste(project_dir, "202004_genePairwiseMetadata.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+## Phylogenetic trees
+
+```{r phy_trees}
+bc_mat <- do.call(rbind, strsplit(barcode_vars$full_barcode, ""))
+rownames(bc_mat) <- barcode_vars$worm
+# create phylogenetic object
+gw_phydat <- phangorn::phyDat(bc_mat)
+# calculate distances
+gw_dist   <- phangorn::dist.ml(gw_phydat)
+# create trees
+gw_UPGMA  <- phangorn::upgma(gw_dist)
+print(paste("UPGMA parsimony:", phangorn::parsimony(gw_UPGMA, gw_phydat)))
+gw_NJ     <- phangorn::NJ(gw_dist)
+print(paste("Nearest neighbor joining parsimony:", phangorn::parsimony(gw_NJ, gw_phydat)))
+```
+
+From maximum parsimony calculations, UPGMA is a better tree. As the simplest method to construct tree, it's assumptions that all lineages have the same evolutonary pressure holds since it's the same organism. 
+
+```{r plot_phylogenies}
+ggtree::ggtree(gw_UPGMA, branch.length = "none")
+```
+
+This tree is a little budy, with large clades per barcode. To simplify this, I will take one representative for each barcode per species and plot the number of cases per year as a dotplot next to the tree. 
+
+```{r species_barcode}
+bc_meta <- dplyr::mutate(barcode_vars, 
+  host = ifelse(grepl("PD", worm), "Human", "Dog"),
+  year = stringr::str_extract(sub('\\_.*', '', worm), "\\-*\\d+\\.*\\d*")) %>%
+  dplyr::inner_join(., barcode_counts)
+bc_species <- dplyr::group_by(bc_meta, full_barcode, host, year, barcode_number) %>% 
+  dplyr::summarise(count=n()+5) %>%
+  tidyr::pivot_wider(names_from = year, values_from = count) %>%
+  replace(., is.na(.), 0)
+# create new barcode matrix to build phylogenetic tree
+bc_spec_mat <- do.call(rbind, strsplit(bc_species$full_barcode, ""))
+rownames(bc_spec_mat) <- paste(bc_species$host, bc_species$barcode_number, sep="_")
+
+# create phylogenetic object
+spec_phydat <- phangorn::phyDat(bc_spec_mat)
+# calculate distances
+spec_dist   <- phangorn::dist.ml(spec_phydat)
+# create tree
+spec_UPGMA  <- phangorn::upgma(spec_dist)
+```
+
+```{r plot_phylogenies_simp}
+side_map <- as.matrix(bc_species[,c(9, 8, 7, 5, 6, 4)])
+side_map[side_map > 1 ] <- 1
+row.names(side_map) <- paste(bc_species$host, bc_species$barcode_number, sep="_")
+# identify colors
+sort(unique(as.vector(side_map)))
+# phytools::dotTree(spec_UPGMA, side_map, labels=TRUE, length=19, fsize=0.7, ftype="i")
+png(paste(project_dir, "plots", "phylo_quantCase.png", sep="/"), width = 600, height = 800)
+phytools::phylo.heatmap(spec_UPGMA, side_map, length=100, 
+                         length=2, fsize=0.7, ftype="i", colors=c("grey99", "navyblue"))
+                         # colors=c("grey99", 
+                         #         '#fef0d9','#fdd49e','#fdbb84','#fc8d59','#ef6548','#d7301f','#990000',
+                         #         '#edf8e9','#c7e9c0','#a1d99b','#74c476','#31a354','#006d2c',
+                         #         '#c6dbef','#9ecae1','#6baed6','#3182bd','#08519c'))
+dev.off()
+```
+
+## Compare human and dog similarity
+
+```{r species_sim}
+bc_num <- dplyr::mutate(bc_meta, bc_iden = paste(host, barcode_number,sep="_")) %>% dplyr::select(worm, bc_iden)
+gw_comp <- data.table::fread(paste(project_dir, "202004_genePairwiseMetadata.txt", sep="/"), sep="\t") %>%
+  dplyr::filter(grepl("PD", worm_number.x), !grepl("PD", worm_number.y)) %>%
+  dplyr::left_join(., bc_num, by =c("worm1" = "worm")) %>%
+  dplyr::left_join(., bc_num, by =c("worm2" = "worm"))
+bc_compIden <- dplyr::select(gw_comp, bc_iden.x, bc_iden.y, value) %>% unique() %>%
+  dplyr::mutate(bc_iden.x = factor(bc_iden.x, levels = rev(gtools::mixedsort(unique(bc_iden.x)))),
+                bc_iden.y = factor(bc_iden.y, levels = gtools::mixedsort(unique(bc_iden.y))))
+```
+
+```{r species_sim_plot}
+coord_ratio <- length(unique(bc_compIden$bc_iden.x))/length(unique(bc_compIden$bc_iden.y)) 
+bc_iden <- bc_compIden %>% ggplot(aes(x=bc_iden.y, y=bc_iden.x, fill=value)) + 
+  geom_tile() +
+  scale_fill_viridis_c(name="Genetic\nsimilarity") + 
+  scale_x_discrete(position = "top") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.title = element_blank()) +
+  coord_fixed(ratio = coord_ratio)
+# ggsave("species_pairwiseIden.png", plot = bc_iden, path = paste(project_dir, "plots", sep="/"), width = 8, height = 5, units = c("in"), dpi = 300) 
+```

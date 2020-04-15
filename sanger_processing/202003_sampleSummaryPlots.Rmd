@@ -1,0 +1,111 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup}
+# load libraries
+for(p in c('data.table', 'dplyr', 'tidyr', "ggplot2",
+           'ggsci', 'ggforce', 'ggpubr')){
+  if(!p %in% installed.packages()[,1]){
+    install.packages(p)
+    library(p, character.only = TRUE)
+  }
+  library(p, character.only = TRUE)
+}
+
+# set global options
+options(datatable.fread.datatable=FALSE)
+options(stringsAsFactors = FALSE)
+
+# set directories
+code_dir <- "/mnt/md0/guinea_worm/mt_sanger"
+project_dir <- "/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/gw_bwaAlign/2020_newSeqs"
+
+# load functions
+source(paste(code_dir, "plotting_themeJ.R", sep="/"))
+
+# plotting misc.
+bc_colors <- setNames(c(ggsci::pal_futurama("planetexpress")(11)[-9], "grey80", "grey50"), c(seq(1,10), "Not common barcode.", "Null"))
+```
+
+```{r load data}
+worm_metadata <- read.delim(paste(project_dir, "202004_wormMetadata.txt", sep="/"), sep="\t")
+barcode_vars  <- read.delim(paste(project_dir, "202003_geneBarcodes.txt", sep="/"), sep="\t")
+merged_worms  <- dplyr::left_join(barcode_vars, worm_metadata)
+
+# filter data and add new columns for counts per barcode
+barcode_counts <- data.frame(table(barcode_vars$full_barcode), stringsAsFactors = F) %>% 
+  dplyr::arrange(desc(Freq)) %>%
+  dplyr::rename("full_barcode" = Var1, count = Freq) %>%
+  tibble::rowid_to_column("barcode_number")
+merged_worms <- left_join(merged_worms, barcode_counts) %>%
+  dplyr::mutate(species = ifelse(grepl("PD", worm), "Human", "Dog"),
+    barcode_group = ifelse(barcode_number < 11, barcode_number, "Not common barcode."),
+    barcode_group = factor(barcode_group, levels = gtools::mixedsort(unique(barcode_group))),
+    case_col = paste(species, year, sep="_"))
+```
+
+```{r cases_year}
+merged_worms %>%
+  ggplot(aes(x=as.character(month), color=year, fill=case_col)) +
+  geom_bar() 
+  # facet_grid(year~., scales="free", space="free")
+  
+```
+
+```{r cases_map}
+chad <- raster::getData("GADM", country = "Chad", level = 2)
+chad_map <- fortify(chad)
+
+worm_GPS   <- dplyr::filter(merged_worms, !is.na(latitude))
+chad_cases <- ggplot() +
+  geom_polygon(data = chad_map, aes(x=long, y = lat, group = group), fill = "grey90") +
+  geom_point(data=worm_GPS, aes(x=longitude, y=latitude, color=as.character(year), shape=species), size=2, alpha=0.85) + 
+    coord_fixed(xlim=c(14.5,21.5), ylim=c(8,12), ratio = 7/4) +
+  scale_color_manual(values=rev(wesanderson::wes_palette("Rushmore1")), name="Year") +
+  scale_shape_manual(values=c(21,19), name="Species")  +
+  theme_void() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+        legend.position = c(0.20,0.15), 
+        legend.box = "horizontal",
+        legend.margin = margin(6, 6, 6, 6))
+chad_cases
+# ggsave("casesAll_map.png", plot = chad_cases, path = paste(project_dir, "plots", sep="/"), width = 5, height = 5, units = c("in"), dpi = 300)
+```
+
+The bottom half of figure 1 for the paper.  
+
+```{r fig1_bottom}
+cases_bar <- merged_worms %>%
+  ggplot(aes(x=as.character(year), fill=barcode_group)) + 
+    geom_bar() +
+    scale_fill_manual(values=bc_colors, name="Barcode") +
+  labs(x="Year", y="Number of cases")
+
+bc_map <- ggplot() +
+  geom_polygon(data = chad_map, aes(x=long, y = lat, group = group), fill = "grey90") +
+  geom_point(data=dplyr::filter(worm_GPS, barcode_group %in% c("2", "3", "4")), 
+             aes(x=longitude, y=latitude, color=barcode_group, shape=as.character(year)), size=2) +
+  ggforce::geom_mark_ellipse(data=dplyr::filter(worm_GPS, barcode_group %in% c("2", "3", "4")),
+                                                expand = 0, aes(x=longitude, y=latitude, fill=barcode_group), alpha=0.15) +
+  coord_fixed(xlim=c(14.5,21.5), ylim=c(8,12), ratio = 7/4) +
+  scale_color_manual(values=bc_colors) +
+  scale_fill_manual(values=bc_colors) +
+  guides(color=F, fill=F, shape=guide_legend(title="Year")) +
+  theme_void() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+        legend.position = c(0.85,0.75))
+
+comp_bc <- read.delim(paste(project_dir, "202003_genePairwiseCommonBC.txt", sep="/"), sep = "\t")
+bc_pdf  <- dplyr::filter(comp_bc, barcode_number %in% c("2", "3", "4") | is.na(barcode_number)) %>%
+  dplyr::mutate(barcode_number = ifelse(is.na(barcode_number), "Null", barcode_number)) %>%
+  ggplot(aes(x=dist_m/1000)) + 
+  stat_density(aes(fill = as.character(barcode_number)), position = "identity", alpha=0.75) +
+  labs(x="Distance (km)", y="Probability density") +
+  scale_fill_manual(values= bc_colors, name="Barcode\nnumber") 
+figA_bottom <- ggpubr::ggarrange(cases_bar, bc_map, bc_pdf, 
+  common.legend=FALSE, legend = "none", ncol=3, align = "h",
+  labels = c("D", "E", "F"))
+ggsave("fig1_bottom.png", plot = figA_bottom, path = paste(project_dir, "plots", sep="/"), width = 15, height = 5, units = c("in"), dpi = 300)
+```
