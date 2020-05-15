@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "Guinea worm - sample summary plots"
 output: html_notebook
 ---
 
@@ -26,7 +26,8 @@ project_dir <- "/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder
 source(paste(code_dir, "plotting_themeJ.R", sep="/"))
 
 # plotting misc.
-bc_colors <- setNames(c(ggsci::pal_futurama("planetexpress")(11)[-9], "grey80", "grey50"), c(seq(1,10), "Not common barcode.", "Null"))
+year_colors <- setNames(c("black", "#EABE94", "#F2300F", "#35274A", "#0B775E", "#E1BD6D"), seq(2012,2018)[-3])
+bc_colors <- setNames(c(ggsci::pal_futurama("planetexpress")(11)[-9], "grey80", "grey50"), c(seq(1,10), "Not common", "Null"))
 ```
 
 ```{r load data}
@@ -41,48 +42,154 @@ barcode_counts <- data.frame(table(barcode_vars$full_barcode), stringsAsFactors 
   tibble::rowid_to_column("barcode_number")
 merged_worms <- left_join(merged_worms, barcode_counts) %>%
   dplyr::mutate(species = ifelse(grepl("PD", worm), "Human", "Dog"),
-    barcode_group = ifelse(barcode_number < 11, barcode_number, "Not common barcode."),
+    barcode_group = ifelse(barcode_number < 10, barcode_number, "Not common"),
     barcode_group = factor(barcode_group, levels = gtools::mixedsort(unique(barcode_group))),
     case_col = paste(species, year, sep="_"))
+
+# remove worms that are out of bounds following April GW call
+ob_hosts <- rbind(dplyr::filter(merged_worms, species == "Human", latitude  < 10),
+                  dplyr::filter(merged_worms, species == "Dog", latitude  < 8.5)) %>% .[["host_number"]]  
+# saveRDS(ob_hosts, paste(project_dir, "GPS_outlierHosts.Rds", sep="/"))
+merged_worms <- dplyr::filter(merged_worms, !host_number %in% ob_hosts )
+# subset worms with GPS data
+worm_GPS   <- dplyr::filter(merged_worms, !is.na(latitude), !is.na(longitude)) 
+  
 ```
+## Case plots 
 
 ```{r cases_year}
-merged_worms %>%
-  ggplot(aes(x=as.character(month), color=year, fill=case_col)) +
-  geom_bar() 
-  # facet_grid(year~., scales="free", space="free")
-  
+year_bar <- merged_worms %>%
+  dplyr::mutate(species=factor(species, levels=c("Human", "Dog"))) %>%
+  ggplot(aes(y=as.character(year), fill=as.character(year))) +
+  geom_bar() +
+  labs(y="Year", x="Sequenced cases") +
+  scale_fill_manual(values=year_colors, guide=F) +
+  facet_grid(~species, scales="free", space="free") +
+  theme_minimal() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        legend.position = c(0.20,0.15), 
+        legend.box = "horizontal",
+        #legend.margin = margin(6, 6, 6, 6),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"))
+year_bar
+# ggsave("casesAll_Year.png", plot = year_bar, path = paste(project_dir, "plots", sep="/"), width = 8, height = 5, units = c("in"), dpi = 300)
+```
+
+```{r cases_species}
+species_bar <- merged_worms %>%
+  dplyr::mutate(species=factor(species, levels=c("Human", "Dog"))) %>%
+  ggplot(aes(x=species, fill=as.character(year))) +
+  geom_bar()+
+  labs(x="", y="Sequenced cases") +
+  scale_fill_manual(values=year_colors, name="Year") +
+  #facet_grid(~species, scales="free", space="free") +
+  theme_minimal() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        legend.position = c(0.17,0.65), 
+        legend.box = "horizontal",
+        #legend.margin = margin(6, 6, 6, 6),
+        panel.grid.major = element_blank(),
+        #panel.grid.minor = element_blank(), 
+        axis.title.x=element_blank(),
+        axis.line = element_line(colour = "black"))
+# ggsave("casesAll_Species.png", plot = species_bar, path = paste(project_dir, "plots", sep="/"), width = 3, height = 3, units = c("in"), dpi = 300)
 ```
 
 ```{r cases_map}
 chad <- raster::getData("GADM", country = "Chad", level = 2)
 chad_map <- fortify(chad)
 
-worm_GPS   <- dplyr::filter(merged_worms, !is.na(latitude))
 chad_cases <- ggplot() +
   geom_polygon(data = chad_map, aes(x=long, y = lat, group = group), fill = "grey90") +
-  geom_point(data=worm_GPS, aes(x=longitude, y=latitude, color=as.character(year), shape=species), size=2, alpha=0.85) + 
-    coord_fixed(xlim=c(14.5,21.5), ylim=c(8,12), ratio = 7/4) +
-  scale_color_manual(values=rev(wesanderson::wes_palette("Rushmore1")), name="Year") +
-  scale_shape_manual(values=c(21,19), name="Species")  +
+  geom_point(data=worm_GPS, aes(x=longitude, y=latitude, 
+                                color=as.character(year), shape=species),
+             size=2, alpha=1) + 
+  coord_fixed(xlim=c(14.5,21.5), ylim=c(8,12), ratio = 7/4) +
+  scale_color_manual(values=year_colors, name="Year", guide=F) +
+  scale_shape_manual(values=c(21,19), name="Species") +
   theme_void() +
-  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
-        legend.position = c(0.20,0.15), 
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        legend.position = c(0.85,0.15), 
         legend.box = "horizontal",
-        legend.margin = margin(6, 6, 6, 6))
+        legend.margin = margin(6, 6, 6, 6),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"))
 chad_cases
-# ggsave("casesAll_map.png", plot = chad_cases, path = paste(project_dir, "plots", sep="/"), width = 5, height = 5, units = c("in"), dpi = 300)
+ggsave("casesAll_mapYear.png", plot = chad_cases, path = paste(project_dir, "plots", sep="/"), width = 3, height = 3, units = c("in"), dpi = 300)
 ```
 
-The bottom half of figure 1 for the paper.  
+```{r cases_map_barcode}
+chad_barcodes <- ggplot() +
+  geom_polygon(data = chad_map, aes(x=long, y = lat, group = group), fill = "grey90") +
+  geom_point(data=worm_GPS, aes(x=longitude, y=latitude, 
+                                # color=as.character(year), shape=species), 
+                                color=barcode_group, shape=species),
+             size=2, alpha=1) + 
+  #coord_fixed(xlim=c(14.5,21.5), ylim=c(8,12), ratio = 7/4) +
+  coord_fixed(xlim=c(17.25,18.25), ylim=c(9,10), ratio = 1/1) +
+  #scale_color_manual(values=year_colors, name="Year", guide=F) +
+  scale_color_manual(values=bc_colors, name="Barcode\nidentifier", guide=F) +
+  scale_shape_manual(values=c(21,19), name="Species", guide=F) +
+  theme_void() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        legend.position = c(0.85,0.15), 
+        legend.box = "horizontal",
+        legend.margin = margin(6, 6, 6, 6),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"))
+chad_barcodes
+ggsave("casesAll_mapBarcodeSub.png", plot = chad_barcodes, path = paste(project_dir, "plots", sep="/"), width = 3, height = 3, units = c("in"), dpi = 300)
+```
 
-```{r fig1_bottom}
-cases_bar <- merged_worms %>%
+
+```{r barcode_scematic}
+schem_seq <- dplyr::mutate(worm_GPS, 
+  plot_seq = paste(substr(full_barcode, 1,6), "...",  substr(full_barcode, 80,86), sep="")) %>%
+  dplyr::filter(barcode_number < 11) %>%
+  dplyr::select(worm, year, species, plot_seq, barcode_number) %>%
+  dplyr::group_by(species, plot_seq) %>%
+  dplyr::sample_n(1) %>%
+  dplyr::arrange(year, species, barcode_number)
+schem_seq$Worm <- c(seq(1,5), seq(367,371))
+schem_seq <- rbind(data.frame(dplyr::select(schem_seq, -worm)), 
+                   rep("...", 5), rep("...",5), rep("...",5)) %>%
+  dplyr::mutate(Worm = factor(Worm, levels= c(seq(1,5), "...", seq(367,371)))) %>%
+  dplyr::arrange(Worm) %>%
+  dplyr::select(Worm, year, species, plot_seq, barcode_number)
+names(schem_seq) <- c("Worm", "Year", "Host\nspecies", "Barcode\n(86 positions)", "Barcode\nidentifier")
+write.table(schem_seq, paste(project_dir, "plots", "worms_schematic.txt", sep="/"), row.names = F, quote = F, sep="\t")
+
+tbl <- gridExtra::tableGrob(schem_seq, rows=NULL)
+```
+
+## Barcode plots
+
+```{r barcode_years}
+barcode_bar <- worm_GPS %>%
   ggplot(aes(x=as.character(year), fill=barcode_group)) + 
     geom_bar() +
     scale_fill_manual(values=bc_colors, name="Barcode") +
-  labs(x="Year", y="Number of cases")
+  labs(x="Year", y="Sequenced cases - GPS matched") +
+  # guides(fill=guide_legend(ncol=2)) +
+  guides(fill=F) +
+  theme_minimal() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        legend.position = c(0.27,0.75), 
+        legend.box = "horizontal",
+        #legend.margin = margin(6, 6, 6, 6),
+        panel.grid.major = element_blank(),
+        #panel.grid.minor = element_blank(), 
+        axis.title.x=element_blank(),
+        axis.line = element_line(colour = "black"))
+barcode_bar
+ggsave("casesAll_Barcode.png", plot = barcode_bar, path = paste(project_dir, "plots", sep="/"), width = 3, height = 3, units = c("in"), dpi = 300)
+```
 
+```{r barcode_map}
 bc_map <- ggplot() +
   geom_polygon(data = chad_map, aes(x=long, y = lat, group = group), fill = "grey90") +
   geom_point(data=dplyr::filter(worm_GPS, barcode_group %in% c("2", "3", "4")), 
@@ -94,18 +201,30 @@ bc_map <- ggplot() +
   scale_fill_manual(values=bc_colors) +
   guides(color=F, fill=F, shape=guide_legend(title="Year")) +
   theme_void() +
-  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
-        legend.position = c(0.85,0.75))
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        legend.position = c(0.85,0.15), 
+        legend.box = "horizontal",
+        legend.margin = margin(6, 6, 6, 6),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"))
+ggsave("casesSub_map.png", plot = bc_map, path = paste(project_dir, "plots", sep="/"), width = 4, height = 4, units = c("in"), dpi = 300)
+```
 
+```{r barcode_pdf}
 comp_bc <- read.delim(paste(project_dir, "202003_genePairwiseCommonBC.txt", sep="/"), sep = "\t")
 bc_pdf  <- dplyr::filter(comp_bc, barcode_number %in% c("2", "3", "4") | is.na(barcode_number)) %>%
   dplyr::mutate(barcode_number = ifelse(is.na(barcode_number), "Null", barcode_number)) %>%
   ggplot(aes(x=dist_m/1000)) + 
   stat_density(aes(fill = as.character(barcode_number)), position = "identity", alpha=0.75) +
   labs(x="Distance (km)", y="Probability density") +
-  scale_fill_manual(values= bc_colors, name="Barcode\nnumber") 
-figA_bottom <- ggpubr::ggarrange(cases_bar, bc_map, bc_pdf, 
-  common.legend=FALSE, legend = "none", ncol=3, align = "h",
-  labels = c("D", "E", "F"))
-ggsave("fig1_bottom.png", plot = figA_bottom, path = paste(project_dir, "plots", sep="/"), width = 15, height = 5, units = c("in"), dpi = 300)
+  scale_fill_manual(values= bc_colors, name="Barcode\nnumber", guide=F) +
+  theme_minimal() +
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black")) 
+
+ggsave("casesSub_pdf.png", plot = bc_pdf, path = paste(project_dir, "plots", sep="/"), width = 3, height = 3, units = c("in"), dpi = 300)
 ```
+
+

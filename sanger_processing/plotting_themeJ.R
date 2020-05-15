@@ -1,5 +1,5 @@
 theme_j <- function () {
-  theme_bw(base_size=10) %+replace%
+  theme_bw(base_size=16) %+replace%
     theme(
       # font sizes and color
       panel.background  = element_blank(),

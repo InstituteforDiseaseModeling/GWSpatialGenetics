@@ -27,7 +27,6 @@ project_dir <- "/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder
 # load functions
 source(paste(code_dir, "plotting_themeJ.R", sep="/"))
 source(paste(code_dir, "genSpatial_functions.R", sep="/"))
-
 ```
 
 ```{r load data}
@@ -36,10 +35,13 @@ worm_meta <- read.delim(paste(project_dir, "202004_wormMetadata.txt", sep="/"), 
 merged_meta <- dplyr::left_join(barcode_vars, worm_meta) 
 gw_comp <- data.table::fread(paste(project_dir, "202004_genePairwiseMetadata.txt", sep="/"), sep="\t") %>% unique()
 
+gw_compFilt     <- read.delim(paste(project_dir, "20200515_bcPairwiseManualMeta.txt", sep="/"))
+merged_metaFilt <- read.delim(paste(project_dir, "20200515_wormMeta.txt", sep="/"))
+
 # remove outlier worms
-gps_out <- readRDS(paste(project_dir, "GPS_outlierHosts.Rds", sep="/")) 
-gw_compFilt <- dplyr::filter(gw_comp, !host_number.x %in% gps_out,  !host_number.y %in% gps_out)
-merged_metaFilt <- dplyr::filter(merged_meta, !host_number %in% gps_out)
+# gps_out <- readRDS(paste(project_dir, "GPS_outlierHosts.Rds", sep="/")) 
+# gw_compFilt <- dplyr::filter(gw_comp, !host_number.x %in% gps_out,  !host_number.y %in% gps_out)
+# merged_metaFilt <- dplyr::filter(merged_meta, !host_number %in% gps_out)
 ```
 
 ```{r barcode_counts}
@@ -60,7 +62,6 @@ bc_colors <- c(ggsci::pal_futurama("planetexpress")(11)[-c(9, 11)], "grey50")
 
 
 ## Compare within host similarity
-
 
 Some hosts had multiple worms. Is each worm within each host genetically identical?
 
@@ -86,7 +87,7 @@ host_bc_count <- host_count %>%
   labs(x="Host", y="Worms per host") +
   guides(fill=guide_legend(ncol=5))
 host_bc_count
-# ggsave("genSim_hostBarcode.png", plot = host_bc_count, path = paste(project_dir, "plots", sep="/"), width = 7.25, height = 3, units = c("in"), dpi = 300)
+ggsave("20200515_genSim_hostBarcode.png", plot = host_bc_count, path = paste(project_dir, "plots", sep="/"), width = 7.25, height = 3, units = c("in"), dpi = 300)
 ```
 
 What is the genetic similarity of worms thats 
@@ -103,12 +104,12 @@ host_gen_sim <- dplyr::filter(gw_compFilt, dist_m == 0) %>%
         panel.grid.major = element_blank()) +
   labs(x="Genetic similarity", y="Pairwise comparisons")
 host_gen_sim
-ggsave("genSim_hostHistogram.png", plot = host_gen_sim, path = paste(project_dir, "plots", sep="/"), width = 7.25, height = 3, units = c("in"), dpi = 300)
+ggsave("20200515_genSim_hostHistogram.png", plot = host_gen_sim, path = paste(project_dir, "plots", sep="/"), width = 7.25, height = 3, units = c("in"), dpi = 300)
 ```
 
 ```{r gen_sim_plot}
-merge <-ggpubr::ggarrange(host_bc_count, host_gen_sim, ncol=1)
-ggsave("genSim_mergedHistogram.png", plot = merge, path = paste(project_dir, "plots", sep="/"), width = 7.25, height = 5, units = c("in"), dpi = 300)
+merge <-ggpubr::ggarrange(host_bc_count, host_gen_sim, ncol=1, labels=c("A", "B"))
+ggsave("20200515_genSim_mergedHistogram.png", plot = merge, path = paste(project_dir, "plots", sep="/"), width = 7.25, height = 5, units = c("in"), dpi = 300)
 ```
 
 ### Emperical densities - Barcodes 
@@ -116,10 +117,10 @@ ggsave("genSim_mergedHistogram.png", plot = merge, path = paste(project_dir, "pl
 We can compare the densities for geneti similarity between matching barcodes and non-matching barcodes and distance. Since humans overlap with dogs in barcodes but are not 
 
 ```{r bc_match}
-bcAll_df <- distDensity_plots(gw_compFilt, "bcAllFilt_densityNoLabels", project_dir)
-table(gw_compFilt$bc_match)
-bcHum_df <- distDensity_plots( dplyr::filter(gw_compFilt, grepl("PD", worm1) & grepl("PD", worm2)), "bcHumFilt_densityNoLabels", project_dir)
-bcDog_df <- distDensity_plots( dplyr::filter(gw_compFilt, !grepl("PD", worm1) & !grepl("PD", worm2)), "bcDogFilt_densityNoLabels", project_dir)
+bcAll_df <- distDensity_plots(gw_compFilt, "20200515_bcAllFilt_density", project_dir)
+table(dplyr::filter(gw_compFilt, !is.na(dist_m)) %>% .[["bc_match"]])
+bcHum_df <- distDensity_plots( dplyr::filter(gw_compFilt, grepl("PD", worm1) & grepl("PD", worm2)), "20200515_bcHumFilt_density", project_dir)
+bcDog_df <- distDensity_plots( dplyr::filter(gw_compFilt, !grepl("PD", worm1) & !grepl("PD", worm2)), "20200515_bcDogFilt_density", project_dir)
 ```
 
 Do any barcodes seem to have a stronger effect than others on this curve? It doesn't make sense to include barcodes that are found in low frequency.
@@ -128,13 +129,12 @@ Do any barcodes seem to have a stronger effect than others on this curve? It doe
 ```{r ind_barcodes}
 # subset "common" barcodes from the comparisons
 comp_sub <- dplyr::filter(gw_compFilt, full_barcode.x %in% barcodes_keep, full_barcode.y %in% barcodes_keep) %>%
-  
-  dplyr::mutate(bc_group = ifelse(bc_match =="TRUE", full_barcode.x, "No shared barcode in pair.")) %>%
+  dplyr::mutate(bc_group = ifelse(bc_match =="True", full_barcode.x, "No shared barcode in pair.")) %>%
   dplyr::left_join(., barcode_counts, by=c("bc_group" = "full_barcode")) %>%
   dplyr::mutate(Barcode = ifelse(!is.na(barcode_number), paste(barcode_number, "(N =", count, "worms)"), "No common barcode in pair."),
                 Barcode = factor(Barcode, levels = gtools::mixedsort(unique(Barcode))))
-# write.table(comp_sub, paste(project_dir, "202003_genePairwiseCommonBC.txt", sep="/"), sep="\t", quote = F, row.names = F)
-  
+table(dplyr::filter(comp_sub, !is.na(dist_m)) %>% .[["Barcode"]])
+
 cdf <- ggplot(comp_sub, aes(x=dist_m/1000)) + 
   stat_ecdf(aes(colour = Barcode), size=1) +
   labs(x="Distance (km)",y="Cumulative density") +
@@ -143,13 +143,11 @@ pdf <- ggplot(comp_sub, aes(x=dist_m/1000)) +
   stat_density(aes(fill = Barcode), position = "identity", alpha=0.75) +
   labs(x="Distance (km)", y="Probability density") +
   scale_fill_manual(values= bc_colors, name="Barcode\nidentifier") 
-bc_df <- ggpubr::ggarrange(pdf + theme(axis.title=element_blank(), axis.text=element_blank(), 
-                                       plot.margin = unit(c(2,2,2,2), "lines")) , 
-                           cdf + theme(axis.title=element_blank(), axis.text=element_blank(), 
-                                       plot.margin = unit(c(2,2,2,2), "lines")), 
-                           common.legend=TRUE, legend = "none")
+bc_df <- ggpubr::ggarrange(pdf, # + theme(axis.title=element_blank(), axis.text=element_blank(), plot.margin = unit(c(2,2,2,2), "lines")) , 
+                           cdf, #+ theme(axis.title=element_blank(), axis.text=element_blank(), plot.margin = unit(c(2,2,2,2), "lines")), 
+                           common.legend=TRUE, legend = "top")
 bc_df
-# ggsave("bwa_bcIndFiltNoLabels.png", plot = bc_df, path = paste(project_dir, "plots", sep="/"), width = 6, height = 3, units = c("in"), dpi = 300)
+ggsave("20200515_bwa_bcIndFilt.png", plot = bc_df, path = paste(project_dir, "plots", sep="/"), width = 6, height = 3, units = c("in"), dpi = 300)
 ```
 
 #### Sensitivity test - permuations 
@@ -172,7 +170,7 @@ perm_plot <- ggpubr::ggarrange(
     scale_fill_manual(values=tf_colors, name="Same\nbarcode") +
     labs(x="Distance (km)", y="Probability density"),
   common.legend=TRUE, legend = "top")
-# ggsave("sensitivity_densityDistPerm.png", plot = perm_plot, path = paste(project_dir, "plots", sep="/"), width = 6, height = 3, units = c("in"), dpi = 300)
+ggsave("20200515_sensitivity_densityDistPerm.png", plot = perm_plot, path = paste(project_dir, "plots", sep="/"), width = 6, height = 3, units = c("in"), dpi = 300)
 ```
 
 
@@ -198,7 +196,7 @@ sub_samp <- ggpubr::ggarrange(
     scale_fill_manual(values=tf_colors, name="Same\nbarcode") +
     labs(x="Distance (km)", y="Probability density"),
   common.legend=TRUE, legend = "top")
-# ggsave("sensitivity_densitySingHost.png", plot = sub_samp, path = paste(project_dir, "plots", sep="/"), width = 6, height = 3, units = c("in"), dpi = 300)
+ggsave("20200515_sensitivity_densitySingHost.png", plot = sub_samp, path = paste(project_dir, "plots", sep="/"), width = 6, height = 3, units = c("in"), dpi = 300)
 ```
 
 #### Sensitivity test - nucleotide diversity collapse
@@ -217,20 +215,20 @@ sens_diff <- do.call(rbind, lapply(1:nrow(sens_df), function(i){
 # identify barcode pairs that are one bp off
 sens_1off <- dplyr::filter(sens_diff, !grepl("\\,|ignore", diff_pos)) %>% dplyr::select(full_barcode.x, full_barcode.y, diff_pos)
 gw_compBC <- dplyr::left_join(gw_compFilt, sens_1off) %>%
-  dplyr::mutate(bc_match = ifelse(!is.na(diff_pos), "TRUE",  bc_match))
-table(gw_compBC$bc_match)
+  dplyr::mutate(bc_match = ifelse(!is.na(diff_pos), "True",  bc_match))
+table(dplyr::filter(gw_compBC, !is.na(dist_m)) %>% .[["bc_match"]])
 # create 
-bc1off <- distDensity_plots(gw_compBC, "bcAllFilt_1off_density", project_dir)
+bc1off <- distDensity_plots(gw_compBC, "20200515_bcAllFilt_1off_density", project_dir)
 ```
 
 ```{r sens_2off}
 # identify barcode pairs that are one bp off
 sens_2off <- dplyr::filter(sens_diff, !grepl("ignore", diff_pos))  %>% dplyr::select(full_barcode.x, full_barcode.y, diff_pos)
 gw_compBC <- dplyr::left_join(gw_compFilt, sens_2off) %>%
-  dplyr::mutate(bc_match = ifelse(!is.na(diff_pos), "TRUE",  bc_match))
+  dplyr::mutate(bc_match = ifelse(!is.na(diff_pos), "True",  bc_match))
 table(gw_compBC$bc_match)
 # create 
-bc2off <- distDensity_plots(gw_compBC, "bcAllFilt_2off_density", project_dir)
+bc2off <- distDensity_plots(gw_compBC, "20200515_bcAllFilt_2off_density", project_dir)
 ```
 
 The effect is dimished when we incorporate irgnoring two variants in a barcode, but not so much with one. Sensitivity analyses sugguest we can keep going.

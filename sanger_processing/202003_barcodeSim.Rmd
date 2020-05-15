@@ -30,6 +30,7 @@ source(paste(code_dir, "genSim_functions.R", sep="/"))
 
 ```{r load_data}
 # load barcodes 
+barcode_numbers <- read.delim(paste(project_dir, "202004_bc2bciden.txt", sep="/"), sep="\t")
 barcode_vars <- read.delim(paste(project_dir, "202003_geneBarcodes.txt", sep="/"), sep="\t")
 # create a sequenced name data frame to merge with national line lists 
 seq_worms <- cbind.data.frame(
@@ -50,6 +51,8 @@ seq_metaMerge <- read.delim(paste(project_dir, "202004_wormMetadata.txt", sep="/
 
 ## Calculate nucleotide similarity (Pi metric)
 
+05/2020: This is incorrect because it uses protein matrices to determine subsitution penalties - which are not the same for each nucelotide. Scratch this, and just got it manually for each pair. 
+
 ```{r sing_inc, eval=F}
 bc_list <- df2barcodeList(dplyr::select(barcode_vars, worm, full_barcode))
 bc_mat <- simMat(bc_list, 16 , names(bc_list))
@@ -57,9 +60,59 @@ bc_df  <- simMat2df(bc_mat)
 write.table(bc_df, paste(project_dir, "202004_genePairwise.txt", sep="/"), sep="\t", quote = F, row.names = F)
 ```
 
-## Merge metadata 
+```{r gen_sim, eval=F}
+  string_diff <- function(a, b){
+    if(nchar(a)!=nchar(b)) stop("Lengths of input strings differ. Please check your input.")
+    seq.a <- unlist(strsplit(a,split=""))
+    seq.b <- unlist(strsplit(b,split=""))
+    diff.d <- rbind(seq.a,seq.b)
+    only.diff <-diff.d[,diff.d[1,]!=diff.d[2,]]
+    pos <- which(diff.d[1,]!=diff.d[2,])
+    return(1-(length(pos)/nchar(a)))
+  }
+
+barcodes <- unique(barcode_vars$full_barcode)
+barcode_groups <- data.frame(gtools::permutations(n=length(barcodes),r=2,v=barcodes, repeats.allowed=TRUE)) 
+similarity <- unlist(lapply(seq(1, nrow(barcode_groups)), function(i){
+  string_diff(barcode_groups$X1[i], barcode_groups$X2[i])
+}))
+barcode_sim <- cbind.data.frame(barcode_groups, similarity) 
+names(barcode_sim) <- c("full_barcode.x", "full_barcode.y", "value")
+write.table(barcode_sim, paste(project_dir, "20200515_bcPairwiseManual.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+## Combine similairty scores with different worm pairs 
 
 ```{r merge_metadata}
+# load worms we believe have incorrect coordinates
+gps_out <- readRDS(paste(project_dir, "GPS_outlierHosts.Rds", sep="/")) 
+
+# create a master list with metadata
+worm_metaMerge <- seq_metaMerge[,1:8] %>% unique() %>% 
+  dplyr::left_join(., dplyr::select(barcode_vars, worm, full_barcode)) %>%
+  dplyr::left_join(., barcode_numbers) %>%
+  dplyr::mutate(incorrect_gps = ifelse(host_number %in% gps_out, paste(latitude, longitude, sep=","), NA),
+                latitude = ifelse(host_number %in% gps_out, NA, latitude),
+                longitude = ifelse(host_number %in% gps_out, NA, longitude))
+# write.table(worm_metaMerge, paste(project_dir, "20200515_wormMeta.txt", sep="/"), sep="\t", quote = F, row.names = F)
+
+# create  
+worm_pairs <- data.frame(t(combn(worm_metaMerge$worm,2))) %>% dplyr::rename(worm1 = X1, worm2 = X2) %>%
+  dplyr::left_join(., worm_metaMerge, by=c("worm1" = "worm")) %>%
+  dplyr::left_join(., worm_metaMerge, by=c("worm2" = "worm")) 
+dist_m <- sapply(1:nrow(worm_pairs), function(x){
+  geosphere::distm(as.numeric(worm_pairs[x,8:9]), 
+                   as.numeric(worm_pairs[x,18:19]), fun=distHaversine)}) 
+gw_genSim <- cbind.data.frame(worm_pairs, dist_m, stringsAsFactors=F) %>%
+  dplyr::left_join(., barcode_sim) %>%
+  dplyr::mutate(bc_match = ifelse(full_barcode.x == full_barcode.y, "True", "False"),
+                yr_match = ifelse(year.x == year.y, "True", "False"),
+                host_match = ifelse(host_number.x == host_number.y, "True", "False"),
+                species_match = ifelse((grepl("HUM", worm1) & grepl("HUM", worm2)) | (grepl("DOG", worm1) & grepl("DOG", worm2)), "True", "False"))
+# write.table(gw_genSim, paste(project_dir, "20200515_bcPairwiseManualMeta.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+```{r merge_metadata_old, eval=F}
 bc_df <- data.table::fread(paste(project_dir, "202004_genePairwise.txt", sep="/"), sep="\t")
 sim_merge <- pairwise_comp(bc_df, seq_metaMerge, barcode_vars) 
 dist_m <- sapply(1:nrow(sim_merge), function(x){
@@ -94,10 +147,12 @@ ggtree::ggtree(gw_UPGMA, branch.length = "none")
 This tree is a little budy, with large clades per barcode. To simplify this, I will take one representative for each barcode per species and plot the number of cases per year as a dotplot next to the tree. 
 
 ```{r species_barcode}
+barcode_counts <- read.delim('/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/gw_bwaAlign/2020_newSeqs/202004_bc2bciden.txt')
+
 bc_meta <- dplyr::mutate(barcode_vars, 
-  host = ifelse(grepl("PD", worm), "Human", "Dog"),
+  host = ifelse(grepl("HUM", worm), "Human", "Dog"),
   year = stringr::str_extract(sub('\\_.*', '', worm), "\\-*\\d+\\.*\\d*")) %>%
-  dplyr::inner_join(., barcode_counts)
+  dplyr::left_join(., barcode_counts)
 bc_species <- dplyr::group_by(bc_meta, full_barcode, host, year, barcode_number) %>% 
   dplyr::summarise(count=n()+5) %>%
   tidyr::pivot_wider(names_from = year, values_from = count) %>%
@@ -121,7 +176,7 @@ row.names(side_map) <- paste(bc_species$host, bc_species$barcode_number, sep="_"
 # identify colors
 sort(unique(as.vector(side_map)))
 # phytools::dotTree(spec_UPGMA, side_map, labels=TRUE, length=19, fsize=0.7, ftype="i")
-png(paste(project_dir, "plots", "phylo_quantCase.png", sep="/"), width = 600, height = 800)
+png(paste(project_dir, "plots", "20200515_phylo_quantCase.png", sep="/"), width = 600, height = 800)
 phytools::phylo.heatmap(spec_UPGMA, side_map, length=100, 
                          length=2, fsize=0.7, ftype="i", colors=c("grey99", "navyblue"))
                          # colors=c("grey99", 
@@ -134,11 +189,10 @@ dev.off()
 ## Compare human and dog similarity
 
 ```{r species_sim}
-bc_num <- dplyr::mutate(bc_meta, bc_iden = paste(host, barcode_number,sep="_")) %>% dplyr::select(worm, bc_iden)
-gw_comp <- data.table::fread(paste(project_dir, "202004_genePairwiseMetadata.txt", sep="/"), sep="\t") %>%
-  dplyr::filter(grepl("PD", worm_number.x), !grepl("PD", worm_number.y)) %>%
-  dplyr::left_join(., bc_num, by =c("worm1" = "worm")) %>%
-  dplyr::left_join(., bc_num, by =c("worm2" = "worm"))
+gw_comp <- data.table::fread(paste(project_dir, "20200515_bcPairwiseManualMeta.txt", sep="/"), sep="\t") %>%
+  dplyr::filter(species_match == "FALSE") %>%
+  dplyr::mutate(bc_iden.x = ifelse(grepl("HUM", worm1), paste("Human", barcode_number.x), paste("Dog", barcode_number.x)),
+                bc_iden.y = ifelse(grepl("HUM", worm2), paste("Human", barcode_number.y), paste("Dog", barcode_number.y)))
 bc_compIden <- dplyr::select(gw_comp, bc_iden.x, bc_iden.y, value) %>% unique() %>%
   dplyr::mutate(bc_iden.x = factor(bc_iden.x, levels = rev(gtools::mixedsort(unique(bc_iden.x)))),
                 bc_iden.y = factor(bc_iden.y, levels = gtools::mixedsort(unique(bc_iden.y))))
@@ -152,6 +206,7 @@ bc_iden <- bc_compIden %>% ggplot(aes(x=bc_iden.y, y=bc_iden.x, fill=value)) +
   scale_x_discrete(position = "top") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1),
         axis.title = element_blank()) +
-  coord_fixed(ratio = coord_ratio)
-# ggsave("species_pairwiseIden.png", plot = bc_iden, path = paste(project_dir, "plots", sep="/"), width = 8, height = 5, units = c("in"), dpi = 300) 
+  coord_flip()
+  #coord_fixed(ratio = coord_ratio)
+ggsave("20200515_species_pairwiseIden.png", plot = bc_iden, path = paste(project_dir, "plots", sep="/"), width = 6, height = 6, units = c("in"), dpi = 300) 
 ```
