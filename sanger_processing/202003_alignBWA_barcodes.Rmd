@@ -1,0 +1,155 @@
+---
+title: "Guinea worm mitochondrial DNA genomics: Creating barcode sequences"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+# load libraries
+for(p in c('data.table', 'dplyr', 'tidyr', 'ggplot2')){
+  if(!p %in% installed.packages()[,1]){
+    install.packages(p)
+    library(p, character.only = TRUE)
+  }
+  library(p, character.only = TRUE)
+}
+
+# set global options
+options(datatable.fread.datatable=FALSE)
+options(stringsAsFactors = FALSE)
+
+# set directories
+code_dir <- "/mnt/md0/guinea_worm/mt_sanger"
+project_dir <- project_dir <- "/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/gw_bwaAlign/2020_newSeqs"
+
+# load functions
+source(paste(code_dir, "plotting_themeJ.R", sep="/"))
+source(paste(code_dir, "alignment_functions.R", sep="/"))
+```
+
+## Introduction
+
+################################################################################
+## Alignment commands (Linux)
+
+This method directly aligns the FASTA files to the mitochondrial reference genome. 
+
+```
+conda activate ngs_align
+GW_DIR="/mnt/c/Users/jribado/Desktop/guineaWorm_genomic"
+# create alignment index
+bwa index $GW_DIR/mt_reference/DmedinensisMitochondrionComplete.fasta
+
+# run alignments for all files, convery sam to bam files
+find $GW_DIR -maxdepth 1 -name *.fasta | sed -e 's/.*ALL_\(.*\).fasta/\1/' | xargs -i{} echo 'bwa mem -t 4 '$GW_DIR/'mt_reference/DmedinensisMitochondrionComplete.fasta '$GW_DIR/'ALL_{}.fasta > bwaAlign_{}.sam; \
+cat bwaAlign_{}.sam | samtools view -S -b | samtools sort --threads 4 > bwaAlign_{}.bam; \
+samtools index bwaAlign_{}.bam' | sh
+conda deactivate
+
+samtools view  '/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/gw_bwaAlign/2020_newSeqs/alignments/bwaAlign_ND3-5.bam' |  awk -v OFS='\t' '{print $1,$4,$10}'
+```
+
+## Identify variants
+
+```{r specify_directories}
+project_dir <- "/home/jribado/Dropbox (IDM)/Data, Dynamics, and Analytics Folder/Projects/Guinea Worm Genetics in Chad/gw_bwaAlign/2020_newSeqs"
+gw_dir <- paste(project_dir, "alignments", sep="/")
+genes  <- c("co3", "cytB", "nd35")
+```
+
+### Create standard sequences 
+First, read in the alignment files and generate equilength sequences that account for minimum and maximum alignment positions of samples per gene. 
+
+```{r sequence_df}
+gene_sequences <- lapply(setNames(genes, genes), function(i){
+  new_sequence <- seq_match(gw_dir, paste0("bwaAlign_", i, ".txt"))
+  names(new_sequence) <- c("worm", i)
+  return(new_sequence)
+})
+gene_sequences_df <- Reduce(function(...) merge(..., all="TRUE", by="worm"), gene_sequences)
+# write.table(gene_sequences_df, paste(project_dir, "202003_geneSequences.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+### Count variants at each positon 
+
+```{r variant_counts, warning=F}
+# get the length of the gene sequences
+gene_lengths <- list(co3=nchar(gene_sequences_df$co3[1]),
+                     cytB=nchar(gene_sequences_df$cytB[1]),
+                     nd35=nchar(gene_sequences_df$nd35[2])) 
+
+variants_list <- lapply(setNames(genes, genes), function(i){
+  fasta2snpIden(gene_sequences_df, i, 1, gene_lengths[[i]], 2)
+})
+variants_df <- dplyr::bind_rows(variants_list)
+# write.table(variants_df, paste(project_dir, "202003_geneVariants.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+
+### Identify sequencing abnormalities 
+
+How many variant positions may be driven by outlier worms? Outlier worms are worms that have a large proportion of singleton variants compared to the sampled population, or have a large number of missing positions for any gene. The positions from outlier worms will be ignored when creating barcodes.
+
+```{r missing_outliers}
+missing_counts <- do.call(rbind, lapply(genes, function(j){cbind.data.frame(
+    gene= j, worm = gene_sequences_df[,1],
+    counts = unlist(lapply(gene_sequences_df[,j], function(i){stringr::str_count(i, "\\-")})))
+}))
+missing_counts %>% ggplot(aes(x=counts)) + geom_histogram() + facet_grid(~gene, scales="free")
+```
+
+```{r filter_missing_outliers}
+# calculate outliers
+outlier_worms <- missing_counts %>%
+  group_by(gene) %>%
+  filter((abs(counts - median(counts)) > 2*sd(counts))) 
+outlier_worms
+miss_outlier <- dplyr::filter(missing_counts, gene == "nd35" & counts > 750) %>% .[["worm"]]
+```
+
+Using standard +- 2 SD from the median, no worms are statistical outliers. The worm missing >750 bp in the gene sequence is missing about 40% of bases, and will be removed since it will skew the genomic similarity metrics.  
+
+
+```{r variant_outliers}
+variant_counts <- dplyr::filter(variants_df, variant == "T") %>%
+  dplyr::group_by(gene, singleton_samp) %>%
+  dplyr::summarise(count = n())
+variant_counts %>% ggplot(aes(x=gene, y=count, fill=singleton_samp)) + geom_bar(stat="identity")
+```
+
+We can see two worms are driving more of the variation across genes. Singleton variants in these two worms will be ignored. 
+
+```{r filter_singleton_outliers}
+sing_outlier <- dplyr::filter(variant_counts, count > 50) %>% .[["singleton_samp"]]
+```
+
+### Filter worms on genomic availability
+
+All three genes need to be sequenced to create a barcode. Remove any worms missing a gene, or if still retained, in one of the categories above. 
+
+```{r filter_worms}
+# gene_sequences_df <- read.delim(paste(project_dir, "202003_geneSequences.txt", sep="/"), sep="\t")
+filtered_worms <- na.omit(gene_sequences_df) %>%
+  dplyr::filter(!worm %in% c(miss_outlier, sing_outlier))
+# write.table(filtered_worms, paste(project_dir, "202003_geneSequences_filtered.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+Dropping worms missing any of the three genes retains `r nrow(filtered_worms)` out of the possible `r nrow(gene_sequences_df)`.
+
+################################################################################
+## Generate barcodes 
+
+```{r run_barcode_generation, warning=F}
+barcode_list <- lapply(setNames(genes, genes), function(y){
+  sequence2barcode(y, filtered_worms[["worm"]], filtered_worms[[y]], variants_df)
+})
+barcode_df <- Reduce(function(...) merge(..., all="TRUE", by="worm"), gene_seqs_list)
+barcode_df <- tidyr::unite(barcode_df, "full_barcode", co3:nd35, sep="", remove=FALSE) 
+# write.table(barcode_df, paste(project_dir, "202003_geneBarcodes.txt", sep="/"), sep="\t", quote = F, row.names = F)
+```
+
+Within the bounds of the genes, the variant barcode with singletons included is `r nchar(barcode_df$full_barcode[1])` basepairs long with `r length(unique(barcode_df$full_barcode))` unique haplotypes.
+
+
+
+
+

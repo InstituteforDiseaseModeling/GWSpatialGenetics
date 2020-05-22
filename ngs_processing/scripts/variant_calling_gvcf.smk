@@ -6,7 +6,6 @@ wildcard_constraints:
 ################################################################################
 rule call_haplotypes:
     input:
-        ref_dict = rules.create_ref_dict.output,
         bam = recursive_bam,
         bam_idx = rules.merge_bam_index.output # not directly used in rule
     output: join(PROJECT_DIR, "01_processing/02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz")
@@ -48,17 +47,34 @@ rule joint_genotyping:
     """
 
 ################################################################################
-rule filter_discovery_vcf:
+rule snp_discovery_vcf:
     input:  rules.joint_genotyping.output
-    output: join(PROJECT_DIR, "01_processing/02_align/recalibrate/haplocall_{iteration}/joint_genotypeFiltered.vcf.gz")
-    params:
-        qd_score = config['variant_filter']['initial_QD_filter']
+    output: temp(join(PROJECT_DIR, "01_processing/02_align/recalibrate/haplocall_{iteration}/joint_genotypeFiltered_SNPs.vcf.gz"))
     shell: """
 		gatk SelectVariants \
             --reference {REF_FILE} \
             --variant {input} \
+            --select-type-to-include SNP \
             --output {output} \
-            -select=\"QD > {params.qd_score}\"
+    """
+
+################################################################################
+rule filter_discovery_vcf:
+    input:  rules.snp_discovery_vcf.output
+    output: join(PROJECT_DIR, "01_processing/02_align/recalibrate/haplocall_{iteration}/joint_genotypeFiltered.vcf.gz")
+    params:
+        qd_score = config['variant_filter']['quality_depth'],
+        fisher   = config['variant_filter']['fisher_strand'],
+        map_qual = config['variant_filter']['mapping_quality'],
+        map_root = config['variant_filter']['mapping_rootsq'],
+        map_rank = config['variant_filter']['mapping_rank']
+    shell: """
+		gatk VariantFiltration  \
+            --reference {REF_FILE} \
+            --variant {input} \
+            --output {output} \
+            --filter-expression \"QD < {params.qd_score} || FS > {params.fisher} || MQ < {params.map_qual} || MQRankSum < {params.map_root} || ReadPosRankSum < {params.map_rank}\" \
+            --filter-name "gatk_hardFilt" \
     """
 
 ###############################################################################
@@ -103,4 +119,27 @@ rule check_base_recalibration:
             -before {input.initial_recal} \
             -after {input.final_recal} \
             -plots {output}
+    """
+
+
+################################################################################
+# gatk orthogonal approach
+################################################################################
+# skips indels
+rule bcftool_variants:
+    input:
+        bam      = rules.merge_add_groups.output,
+        bam_idx  = rules.merge_bam_index.output
+    output:
+        vcf = join(PROJECT_DIR, "01_processing/03_variant_calls/bcftools/individual_vcfs/{sample}.vcf.gz"),
+        tbi = join(PROJECT_DIR, "01_processing/03_variant_calls/bcftools/individual_vcfs/{sample}.vcf.gz.tbi")
+    params:
+        ploidy = config['variant_calling']['ploidy'],
+        min_qual = config['trim_galore']['quality']
+    threads: 4
+    shell: """
+		 bcftools mpileup --threads {threads} -q {params.min_qual} \
+            --fasta-ref {REF_FILE} {input.bam} | \
+            bcftools call -m --ploidy {params.ploidy} -Ou -O z --output {output.vcf};
+        tabix -p vcf {output.vcf}
     """

@@ -11,18 +11,22 @@ trim_galore:
 
 reference_alignment:
   genome_name: 'DmedinensisMitochondrionComplete.fasta' # include extension
-  genome_path: '/mnt/md0/guinea_worm/public_genomesGW/mt/'
+  genome_path: '/mnt/md0/guinea_worm/public_genomesGW/mt'
 
-# gem_masking:
-#     kmer_size: 100
-#     mistmatch: 5
 
 variant_calling:
-  ploidy: 1
+  ploidy: 1     # the genome ploidy of the reference organism.
 
+# following recommendations from GATK for hard filters.
+# https://gatkforums.broadinstitute.org/gatk/discussion/2806/howto-apply-hard-filters-to-a-call-set
 variant_filter:
-  initial_QD_filter: 30.0
+  quality_depth: 2.0
+  fisher_strand: 60.0
+  mapping_quality: 40.0
+  mapping_rootsq: -12.5
+  mapping_rank: -8.0
+  # final call set
   read_depth_min: 10.0
   rank_sum: 3.1
 
-# snakemake -s gw_processing.snakefile --configfile configGW_mtAll.yaml --config iteration='2' --rerun-incomplete --jobs 100 --keep-going -np --latency-wait 30 
+# snakemake -s ngs_preprocessing.snakefile --configfile ngs_analyses/configGW_mtAll.yaml --config iteration='2' --rerun-incomplete --jobs 100 --keep-going -np --latency-wait 30  | grep jointGenotype

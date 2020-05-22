@@ -13,7 +13,7 @@ This pipeline was modified from the outline above to incorporate variant calls f
 #  call python modules and functions
 include: "scripts/wgs_functions.smk"
 include: "scripts/reference_index.smk"
-include: "scripts/gem_mask.smk"
+# include: "scripts/gem_mask.smk"
 include: "scripts/qc.smk"
 include: "scripts/alignment.smk"
 include: "scripts/variant_calling_gvcf.smk"
@@ -22,7 +22,8 @@ include: "scripts/variant_filtering.smk"
 ################################################################################
 rule all:
     input:
-        expand(join(PROJECT_DIR,  "01_processing/00_qc_reports/{step}_multiqc/multiqc_report.html"), step=['pre', 'post']),
+        # expand(join(PROJECT_DIR,  "01_processing/00_qc_reports/{step}_multiqc/multiqc_report.html"), step=['pre', 'post']),
         expand(join(PROJECT_DIR, "01_processing/02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.bam"), sample=SAMPLE_PREFIX, iteration=config['iteration']),
         expand(join(PROJECT_DIR, "01_processing/02_align/recalibrate/{sample}_{iteration}Iter_bsqrCovariates.pdf"), sample=SAMPLE_PREFIX, iteration= list(range(1,config['iteration']+1))),
-        expand(join(PROJECT_DIR, "01_processing/03_variant_calls/{sample}_{iteration}Iter_filter.{extension}"), sample=SAMPLE_PREFIX, iteration = config['iteration'], extension=['vcf.gz', 'txt'])
+        expand(join(PROJECT_DIR, "01_processing/03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"),  iteration=list(range(1,config['iteration']+1)), extension=['vcf.gz', 'txt'])
+        #join(PROJECT_DIR, "01_processing/03_variant_calls/bcftools/all_merged.txt")
