@@ -1,15 +1,20 @@
 ################################################################################
 # extract naming convention from file names
 files = fn.filter(os.listdir(DATA_DIR), "*.fastq*")
-READ_SUFFIX = list(set([x.split("_")[-1].split(".")[0] for x in files]))
+#READ_SUFFIX = list(set([x.split(".")[0] for x in files]))
+READ_SUFFIX = ["R1", "R2"]
 EXTENSION = ".fastq.gz"
 gz_ext = '.gz' if EXTENSION.endswith('.gz') else ''
 
 
 ################################################################################
 rule pre_fastqc:
-	input:  join(DATA_DIR, "{ena_id}_{read}" + EXTENSION)
-	output: join(PROJECT_DIR,  "01_processing/00_qc_reports/pre_fastqc/{ena_id}_{read}_fastqc.html")
+	input:
+		join(DATA_DIR, "{ena_id}_" + READ_SUFFIX[0] + EXTENSION),
+		join(DATA_DIR, "{ena_id}_" + READ_SUFFIX[1] + EXTENSION)
+	output:
+		join(PROJECT_DIR,  "01_processing/00_qc_reports/pre_fastqc/{ena_id}_" + READ_SUFFIX[0] + "_fastqc.html"),
+		join(PROJECT_DIR,  "01_processing/00_qc_reports/pre_fastqc/{ena_id}_" + READ_SUFFIX[1] + "_fastqc.html")
 	params:
 		outdir = join(PROJECT_DIR, "01_processing/00_qc_reports/pre_fastqc/")
 	shell: """
@@ -57,7 +62,7 @@ rule trim_galore:
 ################################################################################
 rule post_fastqc:
 	input:  rules.trim_galore.output
-	output: join(PROJECT_DIR,  "01_processing/00_qc_reports/post_fastqc/{ena_id}_{read}_val_{read}_fastqc.html")
+	output: join(PROJECT_DIR,  "01_processing/00_qc_reports/post_fastqc/{ena_id}_val_{read}_fastqc.html")
 	params:
 		outdir = join(PROJECT_DIR, "01_processing/00_qc_reports/post_fastqc/")
 	shell: """

@@ -25,10 +25,12 @@ ENA_ID = list(set(META_FILE['ena_accession']))
 def assign_sample_replicates(metafile):
     ''' Create a dictionary where the sample prefix is the key and corresponding sample replicates are the samples. '''
     samp_dict = defaultdict(list)
+    #seq_pairs = metafile['sample']
     seq_pairs = zip(metafile['sample'], metafile['ena_accession'])
     for sample, ena in seq_pairs:
         samp_dict[sample].append(ena)
     return(samp_dict)
+    #return(seq_pairs)
 
 
 ################################################################################

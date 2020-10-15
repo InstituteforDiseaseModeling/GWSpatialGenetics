@@ -3,7 +3,8 @@ sample_dict=assign_sample_replicates(META_FILE)
 ################################################################################
 rule align_to_ref:
     ''' Aligns reads to specified reference genome and. Currently only retains and sorts reads where both read mates align to the reference. '''
-    input: bwa_build = rules.build_ref_index.output, \
+    input:
+        bwa_build = rules.build_ref_index.output, \
         bwa_index = REF_FILE, \
         fwd = rules.trim_galore.output.fwd, \
 		rev = rules.trim_galore.output.rev
