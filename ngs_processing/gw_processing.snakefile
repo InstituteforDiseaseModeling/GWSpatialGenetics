@@ -26,7 +26,7 @@ rule all:
 #        expand(join(PROJECT_DIR,  "01_processing/00_qc_reports/{step}_multiqc/multiqc_report.html"), step=['pre', 'post']),
         expand(join(PROJECT_DIR, "01_processing/02_align/{ena_id}_pairAligned.bam"), ena_id=ENA_ID),
         expand(join(PROJECT_DIR, "01_processing/02_align/coverage/{ena_id}_pairAligned_coverage.txt"), ena_id=ENA_ID),
-        expand(join(PROJECT_DIR, "01_processing/02_align/primer_counts/{ena_id}_primerCounts_summary.txt"), ena_id=ENA_ID),
+        # expand(join(PROJECT_DIR, "01_processing/02_align/primer_counts/{ena_id}_primerCounts_summary.txt"), ena_id=ENA_ID),
         expand(join(PROJECT_DIR, "01_processing/02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.bam"), sample=SAMPLE_PREFIX, iteration=config['iteration']),
         expand(join(PROJECT_DIR, "01_processing/02_align/recalibrate/{sample}_{iteration}Iter_bsqrCovariates.pdf"), sample=SAMPLE_PREFIX, iteration= list(range(1,config['iteration']+1))),
         expand(join(PROJECT_DIR, "01_processing/03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"),  iteration=list(range(1,config['iteration']+1)), extension=['vcf.gz', 'txt'])
