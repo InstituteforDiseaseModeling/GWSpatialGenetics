@@ -1,7 +1,9 @@
 #  Masking discovery to match James's Cotton guinea worm processing pipeline.
 # Unfortuntely, GEM mappability is not in Conda for easy install. Followed the following tutorial to download and run.
 # https://evodify.com/gem-mappability/
-# Got new errors that had to do with the program itself. Instead, I am using another mappability tool available in conda. Only keeping the most unique regions of the genome to use as known variants in the "edited" mappability file.
+# Got new errors that had to do with the program itself. 
+# Instead, I am using another mappability tool available in conda. 
+# Only keeping the most unique regions of the genome to use as known variants in the "edited" mappability file.
 
 ################################################################################
 rule ref_index:
@@ -34,7 +36,8 @@ rule ref_mappability:
 
 ################################################################################
 rule ref_mappability_edit:
-    ''' Subset the high mappability (i.e. most unique) regions of the genome to use for recalibration. Addtionally removes additional information from the contig identifier to match GATK produced VCFs. '''
+    ''' Subset the high mappability (i.e. most unique) regions of the genome to use for recalibration. 
+    Addtionally removes additional information from the contig identifier to match GATK produced VCFs. '''
      input:  join(REF_DIR, "ref_mappability",  REF_NAME.split(".")[0] + ".genmap.bed")
     output: join(REF_DIR, "ref_mappability",  REF_NAME.split(".")[0] + ".genmapEdit.bed")
     run:
