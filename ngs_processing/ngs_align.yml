@@ -59,7 +59,6 @@ dependencies:
   - ftputil=3.4=py_0
   - future=0.18.2=py37_0
   - gatk4=4.1.4.1=0
-  - gcc_impl_linux-64=7.3.0=habb00fd_2
   - gcc_linux-64=7.3.0=h553295d_15
   - gdk-pixbuf=2.32.2=1
   - genmap=1.1.0=he1b5a44_0
@@ -83,7 +82,6 @@ dependencies:
   - gsl=2.5=h294904e_1
   - gst-plugins-base=1.14.5=h0935bb2_0
   - gstreamer=1.14.5=h36ae1b5_0
-  - gxx_impl_linux-64=7.3.0=hdf63c60_2
   - gxx_linux-64=7.3.0=h553295d_15
   - harfbuzz=2.4.0=h9f30f68_3
   - htslib=1.10=h78d89cc_1

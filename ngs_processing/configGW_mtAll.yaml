@@ -1,18 +1,23 @@
+# config file for the GW ngs pipeline 
 
-# specificy directories
-raw_reads_directory: '/mnt/md0/guinea_worm/ena_downloads/ena_all/'
-output_directory: '/mnt/md0/guinea_worm/ngs_analyses/unmatched/mt'
-metadata_file: '/mnt/md0/guinea_worm/ngs_analyses/gw_enaChadMIT.txt'
+# output all results here
+output_directory: '/home/bsiranos/idm_local/durrant_data/processing_small'
+
+# metadata file that defines all information about samples. Tab delimited
+# with the following columns. Forwrad and reverse sequencing reads should 
+# be specified in the fq1 and fq2 columns, and all must follow the same paired-end 
+# read specificaiton. 
+# 'ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data'
+# an example is located on github
+metadata_file: '/home/bsiranos/idm_local/durrant_data/metadata_small.tsv'
 
 # specify parameters for TrimGalore -- automatically chcecks the adapter type
 trim_galore:
   quality:  20    # default value
   min_read_length: 30   # this is dependent on the technology used, most NGS is 100-150 so min of 30 is generous for throwing out reads
 
-reference_alignment:
-  genome_name: 'DmedinensisMitochondrionComplete.fasta' # include extension
-  genome_path: '/mnt/md0/guinea_worm/public_genomesGW/mt'
-
+# reference file for alignment - should be .fasta
+reference_file: '/home/bsiranos/idm_local/references/d_medinensis_mitochondrion.fasta'
 
 variant_calling:
   ploidy: 1     # the genome ploidy of the reference organism.
@@ -29,4 +34,8 @@ variant_filter:
   read_depth_min: 10.0
   rank_sum: 3.1
 
-# snakemake -s ngs_preprocessing.snakefile --configfile ngs_analyses/configGW_mtAll.yaml --config iteration='2' --rerun-incomplete --jobs 100 --keep-going -np --latency-wait 30  | grep jointGenotype
+# Fasta file containing names and Primer information 
+primer_file: '/home/bsiranos/idm_local/dropbox_data/pipeline_files/GWmtDNANGSprimers_v1.0_seqkit.fa'
+
+# maximum number of iterations for base quality score recalibration 
+max_iter: 2

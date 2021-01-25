@@ -18,21 +18,14 @@ Step 2: Run install to create a virtual environment with the necessary programs.
 conda env create -f ngs_align.yml
 ```
 
-# Step 3: Remove adapters
-Sequencing data from repositories have the adapters used to map reads to a sample. Leaving adapters in a read can diminish to ability to align to a reference since it increases the number of mismatches. To create adapter free sequencing files, run the following command:
-```
-snakemake -s path/to/git/clone/wg_processing.snakefile --configfile path/to/project/yaml/project.yaml --until post_multiqc --jobs 20
-```
+# Configure the pipeline
+All settings for the pipeline live in the "configfile," an example is provided at `configGW_mtAll.yaml`. Edit this file to change the output directory and other settings. All sequencing file inputs depend on the metadata file specified; look at `metadata_example.tsv` for a template. 
 
-# Step 4: Call and filter variants
-
-Calling variants without a high quality set of SNPs to recalibrate sequencing errors is an iterative process. To avoid errors from cyclic dependencies in rules, first run an initial round (iteration=0). Then rerun the command with a number of iterations to run (recommended 2-3).
-
+# Run the pipeline
+You can now run all steps of the pipeline with a single command. This will run everything from quality control to variant calling. Change the number of cores and jobs here to fit your machine. 
 ```
-snakemake -s gw_processing.snakefile --configfile configGW_mtAll.yaml --rerun-incomplete --jobs 100 --latency-wait 30  --config iteration='0'
-snakemake -s gw_processing.snakefile --configfile configGW_mtAll.yaml --rerun-incomplete --jobs 100 --latency-wait 30  --config iteration='3'
+snakemake -s path/to/git/clone/wg_processing.snakefile --configfile path/to/project/yaml/project.yaml --cores 8 --jobs 8
 ```
-
-The BSQR comparisons to the initial round of variant calling will guide if 3 iterations are sufficient to normalize read errors.
+Base quality score recalibration (BQSR) will take place with two iterations by default. The BQSR comparisons to the initial round of variant calling will guide if 2 iterations are sufficient to normalize read errors.
 
 That's it! At the end you will have VCF files with genotypes at positions. 

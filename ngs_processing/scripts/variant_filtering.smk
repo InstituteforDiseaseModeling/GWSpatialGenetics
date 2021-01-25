@@ -1,7 +1,7 @@
 ###############################################################################
 rule variant_filter:
     input: rules.filter_discovery_vcf.output
-    output: join(PROJECT_DIR, "01_processing/03_variant_calls/jointGenotype_{iteration}Iter_filtered.vcf.gz")
+    output: join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.vcf.gz")
     params:
         dp_min = config['variant_filter']['read_depth_min'],
         limits = config['variant_filter']['rank_sum']
@@ -25,8 +25,8 @@ rule variant_filter:
 ###############################################################################
 rule vcf2txt:
     input: rules.variant_filter.output
-    output: join(PROJECT_DIR, "01_processing/03_variant_calls/jointGenotype_{iteration}Iter_filtered.txt")
-        #join(PROJECT_DIR, "01_processing/03_variant_calls/bcftools/all_merged.txt")
+    output: join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.txt")
+        #join(PROJECT_DIR, "03_variant_calls/bcftools/all_merged.txt")
     shell: """
         gatk VariantsToTable \
             --variant {input} \
