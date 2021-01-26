@@ -14,8 +14,8 @@ PROJECT_DIR = config["output_directory"]
 REF_FILE = config['reference_file']
 metadata = pd.read_csv(config["metadata_file"], delimiter = '\t')
 # validate metadata column names
-if (list(metadata.columns) != ['ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data']):
-    sys.exit("Metadata column names must be exactly 'ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data'")
+# if (list(metadata.columns) != ['ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data']):
+#    sys.exit("Metadata column names must be exactly 'ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data'")
 
 ################################################################################
 # read in file names and paths from the config files used in multiple rules
