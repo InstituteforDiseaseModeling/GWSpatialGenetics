@@ -14,13 +14,15 @@ PROJECT_DIR = config["output_directory"]
 REF_FILE = config['reference_file']
 metadata = pd.read_csv(config["metadata_file"], delimiter = '\t')
 # validate metadata column names
-# if (list(metadata.columns) != ['ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data']):
-#    sys.exit("Metadata column names must be exactly 'ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data'")
+# only a subset of them are necessary
+req_columns = ['ena_accession', 'sample', 'unit', 'fq1', 'fq2']
+if not(all([r in list(metadata.columns) for r in req_columns])):
+    sys.exit("Metadata must contain the following columns " + str(req_columns))
 
 ################################################################################
 # read in file names and paths from the config files used in multiple rules
 ena_ids = list(metadata['ena_accession'])
-sample_list = list(metadata['sample'])
+unique_samples = list(set(metadata['sample']))
 fq1_list = list(metadata['fq1'])
 fq2_list = list(metadata['fq2'])
 # ensure no duplicates in ena_ids, fq1, fq2
@@ -30,7 +32,7 @@ if (any(fq1_list.count(x) > 1  for x in fq1_list)):
     sys.exit("Check metadata, duplictes in fq1 column")
 if (any(fq2_list.count(x) > 1  for x in fq2_list)):
     sys.exit("Check metadata, duplictes in fq2 column")
-
+print(unique_samples)
 # ensure all files specified actually exist
 check_list = [not os.path.exists(a) for a in fq1_list+fq2_list]
 if(any(check_list)):

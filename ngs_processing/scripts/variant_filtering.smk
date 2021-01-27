@@ -6,7 +6,7 @@ rule variant_filter:
         dp_min = config['variant_filter']['read_depth_min'],
         limits = config['variant_filter']['rank_sum']
     shell: """
-		gatk VariantFiltration \
+        gatk VariantFiltration \
             --reference {REF_FILE} \
             --output {output} \
             --variant {input} \

@@ -31,15 +31,15 @@ max_iter=config['max_iter']
 ################################################################################
 rule all:
     input:
-       # expand(join(PROJECT_DIR,  "00_qc_reports/{step}_multiqc/multiqc_report.html"), step=['pre', 'post']),
+        expand(join(PROJECT_DIR,  "00_qc_reports/{step}_multiqc/multiqc_report.html"), step=['pre', 'post']),
         expand(join(PROJECT_DIR, "02_align/{ena_id}_pairAligned.bam"), ena_id=ena_ids),
         expand(join(PROJECT_DIR, "02_align/coverage/{ena_id}_pairAligned_coverage.txt"), ena_id=ena_ids),
         expand(join(PROJECT_DIR, "02_align/primer_counts/{ena_id}_primerCounts_summary.txt"), ena_id=ena_ids),
-        expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_0Iter.bam"), sample=sample_list), 
+        expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_0Iter.bam"), sample=unique_samples), 
         expand(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.bam"),
-         sample=sample_list, iteration=list(range(0, max_iter+1))),
+         sample=unique_samples, iteration=list(range(0, max_iter+1))),
         expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_{iteration}Iter_bsqrCovariates.pdf"),
-         sample=sample_list, iteration= list(range(1,max_iter+1))),
+         sample=unique_samples, iteration= list(range(1,max_iter+1))),
         expand(join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"),
          iteration=list(range(1,max_iter+1)), extension=['vcf.gz', 'txt'])
         #join(PROJECT_DIR, "03_variant_calls/bcftools/all_merged.txt")
