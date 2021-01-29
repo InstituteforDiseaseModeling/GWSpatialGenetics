@@ -6,8 +6,8 @@ rule pre_fastqc:
         fwd = lambda wildcards: read_map[wildcards.ena_id][0],
         rev = lambda wildcards: read_map[wildcards.ena_id][1],
     output:
-        join(PROJECT_DIR,  "00_qc_reports/pre_fastqc/{ena_id}_1_fastqc.html"),
-        join(PROJECT_DIR,  "00_qc_reports/pre_fastqc/{ena_id}_2_fastqc.html")
+        join(PROJECT_DIR,  "00_qc_reports/pre_fastqc/{ena_id}_" + READ_SUFFIX[0] + "_fastqc.html"),
+        join(PROJECT_DIR,  "00_qc_reports/pre_fastqc/{ena_id}_" + READ_SUFFIX[1] + "_fastqc.html")
     params:
         outdir = join(PROJECT_DIR, "00_qc_reports/pre_fastqc/")
     shell: """
@@ -31,8 +31,8 @@ rule trim_galore:
         fwd = lambda wildcards: read_map[wildcards.ena_id][0],
         rev = lambda wildcards: read_map[wildcards.ena_id][1],
     output:
-        fwd = join(PROJECT_DIR, "01_trimmed/{ena_id}_1_val_1.fq" + gz_ext),
-        rev = join(PROJECT_DIR, "01_trimmed/{ena_id}_2_val_2.fq" + gz_ext)
+        fwd = join(PROJECT_DIR, "01_trimmed/{ena_id}_" + READ_SUFFIX[0] + "_val_1.fq" + gz_ext),
+        rev = join(PROJECT_DIR, "01_trimmed/{ena_id}_" + READ_SUFFIX[1] + "_val_2.fq" + gz_ext)
     threads: 2
     params:
         q_min   = config['trim_galore']['quality'],
@@ -52,11 +52,11 @@ rule trim_galore:
 ################################################################################
 rule post_fastqc:
     input:
-        fwd = join(PROJECT_DIR, "01_trimmed/{ena_id}_1_val_1.fq" + gz_ext),
-        rev = join(PROJECT_DIR, "01_trimmed/{ena_id}_2_val_2.fq" + gz_ext)
+        fwd = join(PROJECT_DIR, "01_trimmed/{ena_id}_" + READ_SUFFIX[0] + "_val_1.fq" + gz_ext),
+        rev = join(PROJECT_DIR, "01_trimmed/{ena_id}_" + READ_SUFFIX[1] + "_val_2.fq" + gz_ext)
     output: 
-        fwd = join(PROJECT_DIR,  "00_qc_reports/post_fastqc/{ena_id}_1_val_1_fastqc.html"),
-        rev = join(PROJECT_DIR,  "00_qc_reports/post_fastqc/{ena_id}_2_val_2_fastqc.html")
+        fwd = join(PROJECT_DIR,  "00_qc_reports/post_fastqc/{ena_id}_" + READ_SUFFIX[0] + "_val_1_fastqc.html"),
+        rev = join(PROJECT_DIR,  "00_qc_reports/post_fastqc/{ena_id}_" + READ_SUFFIX[1] + "_val_2_fastqc.html")
     params:
         outdir = join(PROJECT_DIR, "00_qc_reports/post_fastqc/")
     shell: """
@@ -64,7 +64,9 @@ rule post_fastqc:
     """
 
 rule post_multiqc:
-    input: expand(join(PROJECT_DIR,  "00_qc_reports/post_fastqc/{ena_id}_{read}_val_{read}_fastqc.html"), ena_id=ena_ids, read=['1','2']),
+    input: 
+        fwd = expand(join(PROJECT_DIR,  "00_qc_reports/post_fastqc/{ena_id}_" + READ_SUFFIX[0] + "_val_1_fastqc.html"), ena_id=ena_ids),
+        rev = expand(join(PROJECT_DIR,  "00_qc_reports/post_fastqc/{ena_id}_" + READ_SUFFIX[1] + "_val_2_fastqc.html"), ena_id=ena_ids)
     output: join(PROJECT_DIR, "00_qc_reports/post_multiqc/multiqc_report.html")
     params:
         indir  = join(PROJECT_DIR,  "00_qc_reports/post_fastqc"),

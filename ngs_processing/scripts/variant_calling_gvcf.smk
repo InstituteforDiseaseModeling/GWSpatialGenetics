@@ -47,11 +47,11 @@ rule call_haplotypes:
 ################################################################################
 rule combine_gvcf:
     input: 
-        lambda wildcards: expand(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz"), sample=sample_list, iteration=wildcards.iteration)
+        lambda wildcards: expand(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz"), sample=unique_samples, iteration=wildcards.iteration)
     output: 
         join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/combined.g.vcf")
     params:
-        gvcf_string = lambda wildcards: expand("--variant " + join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz"), sample=sample_list, iteration=wildcards.iteration)
+        gvcf_string = lambda wildcards: expand("--variant " + join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz"), sample=unique_samples, iteration=wildcards.iteration)
     shell: """
         gatk CombineGVCFs \
             --reference {REF_FILE} \

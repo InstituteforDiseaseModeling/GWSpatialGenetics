@@ -1,0 +1,27 @@
+# config file for the joint variant calling pipeline
+
+# output all results here
+output_directory: '/home/bsiranos/idm_local/durrant_data/processing_combined'
+
+# file with list of g.vcf files to combine
+# listed one per row, absolute paths prefered 
+# make sure to use the right iteration!
+# example: processing_small/02_align/recalibrate/haplocall_2/combined.g.vcf
+gvcf_list: "/home/bsiranos/idm_local/durrant_data/combine_list.txt"
+
+# reference file for alignment - should be .fasta
+# needs to be the same file you used for the first step on all samples!
+reference_file: '/home/bsiranos/idm_local/references/d_medinensis_mitochondrion.fasta'
+
+# following recommendations from GATK for hard filters.
+# https://gatkforums.broadinstitute.org/gatk/discussion/2806/howto-apply-hard-filters-to-a-call-set
+variant_filter:
+  quality_depth: 2.0
+  fisher_strand: 60.0
+  mapping_quality: 40.0
+  mapping_rootsq: -12.5
+  mapping_rank: -8.0
+  # final call set
+  read_depth_min: 10.0
+  rank_sum: 3.1
+
