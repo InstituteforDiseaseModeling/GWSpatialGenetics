@@ -18,6 +18,20 @@ rule align_to_ref:
     """
 
 ################################################################################
+rule count_aligned_reads:
+    input:
+        expand(join(PROJECT_DIR, "02_align/{ena_id}_pairAligned.bam"), ena_id=ena_ids)
+    output:
+        join(PROJECT_DIR, 'aligned_counts.txt')
+    shell: """
+        for i in {input}; do
+            samtools index "$i"
+            bn=$(basename "$i" | sed 's/_pairAligned.bam//g')
+            echo "$bn\t$(samtools view -c -F 260 $i)" >> {output}
+        done
+    """
+
+################################################################################
 rule mark_duplicates:
     input: rules.align_to_ref.output
     output:
