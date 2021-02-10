@@ -1,0 +1,449 @@
+---
+title: "Guinea worm whole mitochondria primer quality report - Round 2"
+author: "Jessica Ribado"
+date:  "`r format(Sys.time(), '%Y-%m-%d')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+# load libraries
+for(p in c('data.table', 'dplyr', 'tidyr', "ggplot2",
+           'ggsci', 'ggforce', 'ggpubr')){
+  if(!p %in% installed.packages()[,1]){
+    install.packages(p)
+    library(p, character.only = TRUE)
+  }
+  library(p, character.only = TRUE)
+}
+
+# set global options
+options(datatable.fread.datatable=FALSE)
+options(stringsAsFactors = FALSE)
+
+# set directories
+project_dir <- "~/idm_local/durrant_data/processing"
+plot_output_dir <- file.path(project_dir, 'plots')
+if (!dir.exists(plot_output_dir)){ dir.create(plot_output_dir) }
+# primer file
+primer_org_f <- "~/projects/GWSpatialGenetics/ngs_processing/GWmtDNANGSprimers_v1.0_seqkit_metadata.tsv"
+
+# set plotting theme
+theme_j <- function () {
+  theme_bw(base_size=16) %+replace%
+    theme(
+      # font sizes and color
+      panel.background  = element_blank(),
+      plot.background   = element_rect(fill="transparent", colour=NA),
+      plot.title        = element_text(size = rel(.85)),
+      strip.background  = element_rect(fill="transparent", colour=NA),
+      strip.text        = element_text(face="bold", size=rel(.6)),
+      axis.title        = element_text(size=rel(0.8)),
+      axis.text         = element_text(size=rel(0.6), color="grey30"),
+      # legend
+      legend.title         = element_text(size=rel(0.8)),
+      legend.text          = element_text(size=rel(0.6)),
+      legend.background    = element_rect(fill="transparent", colour=NA),
+      legend.key           = element_rect(fill="transparent", colour=NA),
+      legend.justification = "top"
+    )
+}
+
+theme_set(theme_j())
+
+# functions
+getPrimer <- function(x, data) {
+  tmp <- dplyr::filter(data, start <= x & x <= end)
+  if(nrow(tmp) > 0){return(tmp$Primer_Name)
+  } else{return(NA)
+  }
+}
+
+# set global options
+options(datatable.fread.datatable=FALSE)
+options(stringsAsFactors = FALSE)
+```
+
+## Introduction
+
+The Institute of Disease Modeling, now part of the Bill and Melinda Gates Foundation Global Health Division, has been part of an interdisciplinary  collaboration with Elizabeth Thiele (Vassar) and James Cotton (Wellcome Sanger Institute) to maximize the value of epidemiological and genetics data to understand Guinea worm transmission in Chad. Preliminary analyses by IDM has shown whole mitochondrial genome data can give higher resolution information about genetic relatedness in a population than the current three-locus method. 
+
+IDM was tasked with evaluating the success of a newly developed targeted mitochondrial DNA panel to overcome limitations with untargeted sequencing due to high contamination. The panel consists of 40 paired end primers aimed to to amplify 80% of the mitochondrial genome. Liz Thiele shared sequencing of 96 samples on 09/28/2020. This is the second round of evaluating primer success following up from the first round analyzed in 07/2020. 
+
+Files available:
+
+- mitochondrial genome 
+- paired-end Fastq files
+- primer sequences (with target position coordinates)
+
+## Goals
+
+1. Evaluate the quality of sequencing across the genome. This encompasses quality and coverage across the genome.
+2. Provide guidance on the success and failure of different primer sets to amplify designated regions.
+
+## Quality
+
+## Aligned reads
+
+More important than the number of reads sequenced are the number of reads that could be uniquely aligned to the genome (MAPQ > 20). 
+
+```{r, echo=F, message=F, warning=F, fig.width=12, fig.height=4}
+align_readCounts <- read.delim(file.path(project_dir, "aligned_counts.txt"), header=F, sep="\t") %>%
+  dplyr::mutate(V1 = gsub(".*NH_|_[ATCG].*", "\\2", V1)) 
+
+align_read <- align_readCounts %>%
+  ggplot(aes(x = reorder(V1, -V2), y = V2)) + 
+  geom_bar(stat = "identity") +
+  labs(x="Sample", y="Aligned reads (both pairs)") + 
+  theme(axis.text.x = element_text(angle = 090, vjust = 0.5, hjust = 1))
+align_read
+
+```
+Vast improvement in sequenced reads across samples. Two samples are under 2,000, but overall the median number of reads for this set is `r round(median(align_readCounts$V2),2)`. For an average minimum coverage of 5x across the Guinea worm mitochondrial genome, we would need ~750 100 base pair reads evenly scattered throughout the genome. The high number of reads allow for a good estimate of successful primers, but suggest more samples can be merged in a single lane coverage wise for scale-up.  
+
+
+## Coverage 
+
+Reads were aligned to the genome using the BWA package version 0.7.17. Coverage was calculated with bedtools version 2.29.2. Forward and reverse reads that aligned with mapping quality score > 20 are included in coverage.
+
+```{r coverage, echo=F, message=F, warning=F}
+cov_files <- list.files(file.path(project_dir, "02_align", "coverage"))
+cov_files_full <- list.files(file.path(project_dir, "02_align", "coverage"), full.names = T)
+cov_df <- dplyr::bind_rows(lapply(setNames(cov_files_full, gsub("_pair.*", "", basename(cov_files_full))), function(i){
+  tmp <- fread(i, sep="\t", header=F, select = c(2,3))
+  names(tmp) <- c("position", "coverage")
+  return(tmp)}), .id="sample")
+  ```
+
+```{r coverage_wide, echo=F, message=F, warning=F}
+cov_wide <- tidyr::pivot_wider(cov_df, names_from=sample, values_from=coverage, values_fill=0)
+```
+
+First, we want to filter out any samples that have too low of read coverage across the genome to reduce noise in per site comparisons. I calculated the average per locus coverage by summing the coverage at all bases divided by the total number of bases in the mitochondrial genome. We want to retain samples that have a minimum average 5x per locus coverage.
+
+```{r samp_filt, echo=F, message=F, warning=F}
+samp_cov <- as.vector(colSums(cov_wide[,-1])/nrow(cov_wide))
+samp1x <- names(cov_wide[,-1])[samp_cov >= 5]
+samp_covSub <- cov_wide[, c("position", samp1x)]
+```
+
+```{r, echo=F, message=F, fig.width=12, fig.height=4}
+base_covAvg <- ggplot(mapping = aes(samp_cov)) + 
+  geom_histogram(bins=100) +
+  # facet_zoom(xlim = c(0, 1)) +
+  labs(x="Average base coverage", y="Number of samples") 
+base_covAvg 
+```
+There is `r length(samp_cov[samp_cov<5])` sample that has less than 5x per base average coverage in this batch. 
+
+While we have sufficient coverage across the genome we ideally would like to see average 1x depth across sites when normalized by per sample read depths. Any deviations from 1x coverage across the genome will highlight area over or under represented in the read depth pool. In cases of uneven coverage, the number of sequencing reads per sample for future pools need to be calculated from the sites with the lowest representation.   
+
+```{r pos_filt, echo=F, message=F, warning=F}
+cov_norm <- mapply('/', cov_wide[,-1],samp_cov)
+base_cov <- apply(cov_norm, 1, FUN=median, na.rm=TRUE)
+baseMedian1x <- cov_wide$position[base_cov >= 0.5]
+depth_covSub <- cov_norm[baseMedian1x,]
+```
+
+The reads at each locus will be normalized by the sample average coverage. This is the distribution of median normalized coverage per position. 
+
+```{r, echo=F, message=F, fig.width=12, fig.height=4}
+ggplot() + aes(base_cov)+ 
+  geom_histogram(binwidth=0.05, colour="black", fill="white") + 
+  labs(x="Average normalized coverage", y ="Frequency") +
+  scale_x_continuous(breaks = seq(min(base_cov), 5, 0.25))
+```
+
+We have a skew to sites with low average normalized coverage (< 0.5). There is sufficient coverage at `r nrow(depth_covSub)` (`r round(ncol(samp_covSub)/14628, 2)*100`%) sites with at least a median 0.5x normalized population coverage. 
+
+This is the normalized coverage across the mitochondrial genome by 100 base pair windows. The sample with less than 5x average coverage has been removed.
+
+```{r, echo=F, message=F, warning=F}
+sampEx <- names(cov_wide[,-1])[samp_cov < 5]
+coord_cut <- data.frame(cbind(position = unique(cov_df$position), 
+                              group = as.numeric(cut(unique(cov_df$position), seq(0, max(cov_df$position), by=100)))))
+
+cov_plot <- data.frame(cov_norm) %>%
+  #dplyr::mutate(position = baseMedian1x) %>%
+  dplyr::mutate(position =unique(cov_df$position)) %>%
+  tidyr::pivot_longer(-position, names_to = "sample", values_to = "norm_cov") %>%
+  dplyr::filter(!sample %in% sampEx) %>%
+  dplyr::right_join(., coord_cut) %>%
+  ggplot(aes(x=as.numeric(group), y=norm_cov, group=group)) +
+  geom_boxplot() +
+  xlim(c(0,150)) +
+  labs(x="Position\n(100 base pair windows)", y="Average base depth\nnormalized coverage") +
+  theme_j()
+cov_plot
+ggsave(paste(format(Sys.time(), "%Y%m%d"), "mtDNA_100windowNormCoverage.png", sep="_"), 
+       plot = cov_plot,
+       path = paste(project_dir, "plots", sep="/"),
+       width = 8, height = 4, units = c("in"), dpi = 300) 
+```
+
+Some samples have very high normalized coverage (>50) at a few positions, suggesting only a few regions highly amplified with enough reads to have an average 5x coverage across the genome. Will explore samples individually more below. 
+
+Replot this without the outliers for visual clarity up to 5x coverage. 
+
+```{r, echo=F, message=F, warning=F}
+cov_plot + ylim(0,5) 
+```
+There are some gaps earlier in the genome that I believe are of interest, but a gap around 6000 base pairs is expected from Durrant et al. 2019 as a difficult region. 
+
+## Minimum read threshold
+
+The median coverage threshold examined above should change depending on average sequencing depth; samples sequenced at a higher depth can have a lower medium coverage. We can identify problematic areas by low read count outliers for each sample and looking for overlaps. Given the high sequencing depth, 100 reads seems like a decent arbitrary cut off to call variants (10 is a common threshold for low coverage sequencing). 
+
+**Major caveat: For positions with more than 100 reads that may be borderline, I have not visually checked whether these alignments are not noise from other contaminants. Bases that are technically sequenced at appropriate depths may still be poor for variant calling if there is alignment contamination. This is beyond the scope of the ask for this analysis, but worth the mention.** 
+
+For the primers on the top portion of the multipanel figure, I have added 100 base pairs from the end position for visual clarity. The lines on the bottom right figure represent stretches of the genome with less than 100 reads in each sample. The right of this figure highlights the percentage of bases with > 100 read coverage, aligned with the respective sample on the left. The dotted blue line is the target coverage of 80%. 
+
+```{r, echo=F, message=F, warning=F}
+cov_counts <- dplyr::mutate(cov_df, low_counts  = ifelse(coverage < 100, T, F)) %>% dplyr::filter(low_counts == T )
+
+in.seq <- function(x) {
+    # returns TRUE for elments within ascending sequences
+    (c(diff(x, 1), NA) == 1 & c(NA, diff(x,2), NA) == 2)
+    }
+
+contractSeqs <-  function(x) {
+    # returns string formatted with contracted sequences
+    x[in.seq(x)] <- ""
+    gsub(",{2,}", "-", paste(x, collapse=","), perl=TRUE)
+    }
+
+ranges <- bind_rows(lapply(unique(cov_counts$sample), function(i){
+  samp_tmp <- dplyr::filter(cov_counts, sample == i)
+  ranges <- cbind.data.frame(sample= gsub(".*NH_|_[ATCG].*", "\\2", i), 
+                   range = unlist(strsplit(contractSeqs(samp_tmp$position), ","))) %>%
+    tidyr::separate(range, c("start", "end")) %>%
+    tibble::rowid_to_column("range") %>%
+    dplyr::filter(!is.na(end)) %>%
+    dplyr::mutate(missing_bases = as.numeric(end) - as.numeric(start))
+}))
+
+
+ranges_wide <- tidyr::pivot_longer(ranges, cols = c("start", "end"), names_to="location", values_to="position")
+```
+
+
+
+# BIG IMPORTANT PLOT
+```{r, echo=F, message=F, fig.width=12, fig.height=14}
+percent_covered <- dplyr::group_by(ranges, sample) %>% 
+  dplyr::summarise(missing_bases = sum(missing_bases)) %>%
+  dplyr::mutate(covered_bases = round(((14628- missing_bases)/14628) * 100, 2)) %>%
+  dplyr::arrange(desc(covered_bases))
+sample_ord <- percent_covered$sample
+
+# percent ordered
+percent_covered_plot <- percent_covered %>%
+  ggplot(aes(x=covered_bases, y=factor(sample, levels=rev(sample_ord)))) +
+  geom_bar(stat = "identity") +
+  labs(x="Percent bases\nwith 100 reads", y=NULL) +
+  geom_vline(xintercept=80, linetype="dashed", color="blue") +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        #plot.margin = margin(0, 0, 0, 0, "cm"),
+        axis.ticks.y = element_blank(),
+        axis.ticks.length = unit(0, "pt")) +
+  xlim(0,100)
+
+
+# missing ranges plot
+missing_lines <- ranges_wide %>%
+  ggplot(aes(x=as.numeric(position), y=factor(sample, levels=rev(sample_ord)), group=paste(sample, range)))+
+  geom_point(size=0.50) +
+  geom_line(size=0.30) +
+  xlim(0, 14628) +
+  labs(x="Position", y="Sample")
+
+# 
+primer_org <- read.table(primer_org_f, sep='\t', quote='', header=T) 
+primer_boundaries <- primer_org %>%
+  dplyr::mutate(primer_number = gsub("F-|R-", "", Primer_Name)) %>%
+  dplyr::group_by(Primer_Name) %>%
+  dplyr::mutate(start = min(Start, End), end = max(Start, End)) %>%
+  #dplyr::mutate(start = Start, end = End) %>%
+  dplyr::select(Primer_Name, Primer_RM, start, end) %>% unique() 
+
+primer_long <- dplyr::mutate(primer_boundaries, 
+                             start = ifelse(grepl("F-", Primer_Name), start, start - 100),
+                             end = ifelse(grepl("F-", Primer_Name), end + 100, end)) %>%
+  tidyr::pivot_longer(cols = c("start", "end"), names_to="location", values_to="position")  %>%
+  dplyr::mutate(orientation = ifelse(grepl("F", Primer_Name), "Forward", "Reverse"),
+                 Primer_Name = gsub(".*\\_|-P.*", "\\2", Primer_Name))
+
+primers <- primer_long %>%
+  ggplot(aes(x=as.numeric(position), y=orientation, group=paste(Primer_Name, orientation))) +
+  geom_line(position = position_dodge(width = 0.1), aes(color=Primer_Name)) +
+  xlim(0, 14628) +
+  labs(x=NULL, y="Orientaton") +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.margin = margin(0, 0, 0, 0, "cm"), 
+        axis.ticks.length = unit(0, "pt"),
+        axis.ticks = element_blank())+
+  guides(color=F)
+
+  
+ggarrange(primers, NULL, missing_lines, percent_covered_plot, 
+          ncol = 2, nrow = 2,  align = "hv", 
+          widths = c(3, 1), heights = c(1, 8))
+
+```
+
+```{r, eval=F}
+eliminate_plot <- ggarrange(missing_lines  +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.length = unit(0, "pt")) +
+    labs(x="Genomic position", y="Sample"), percent_covered_plot, 
+          ncol = 2, nrow = 1,  align = c("h"), widths = c(2,1))
+ggsave("20201115_adequateCoveragePositions.png", path=plot_output_dir, 
+       plot=eliminate_plot, width=8, height=4, units=c("in"), dpi=300)
+```
+
+This clearly shows that regions with insufficient coverage (at least 100 base pairs) are consistent across samples, pointing to an error with primer design around these regions. Some regions (i.e. around the 11,000 position) have gaps in only a subset of samples, which may point to genomic variation around primer regions that hinder amplification. 
+
+The samples closest to the bottom were those that had a large number of reads at a few positions to have an average genome coverage of 5x, but had >50x normalized coverage at individual positions in the plots above. These samples tend to have the same prefix. 
+
+
+## Capturing previous loci
+
+The original protocol effectively targeted the CO3, cytB, and ND3-5 loci. Are these loci captured in the new protocol? Since these are smaller windows, I can plot the coverage along the genes for each position. The windows for these genes were called from PlasmoDB.
+
+- CO3: 3,788-4,534
+- cytB: 2,628-3,345
+- ND3-5: 12,562-14,566
+
+```{r, echo=F, message=F, warning=F}
+loci_boundaries <-  rbind.data.frame(c("Co3", 3788, 4534), c("cytB", 2628, 3345), c("ND3-5", 12562, 14566))
+names(loci_boundaries) <- c("Primer_Name", "start", "end")
+  
+range_pos <- cbind.data.frame(
+  position = unique(cov_df$position),
+  gene = sapply(unique(cov_df$position), function(p) if(3788 <= p & p <= 4534){"CO3"
+    }else if(2628 <= p & p <= 3345){"cytB"
+      }else if(12562 <= p & p <= 14566){"ND3-5"
+        }else{NA})
+  ) %>%
+  dplyr::filter(!is.na(gene))
+```
+
+```{r, echo=F, message=F, warning=F,  fig.width=12, fig.height=4}
+range_coverage <- tibble::rownames_to_column(data.frame(cov_norm), "position") %>%
+  dplyr::mutate(position = as.numeric(position)) %>%
+  tidyr::pivot_longer(-position, names_to = "sample", values_to = "norm_cov") %>%
+  dplyr::right_join(., range_pos)
+
+range_coveragePlot <- range_coverage %>% 
+  ggplot(aes(x=position, y=norm_cov, group=sample)) +
+    geom_line(alpha=0.25) +
+    labs(x="Genomic position", y="Average base depth\nnormalized coverage") +
+    facet_grid(.~gene, scales="free") +
+    ylim(0,10) +
+    theme_j()
+range_coveragePlot
+ggsave(paste(format(Sys.time(), "%Y%m%d"), "mtDNA_primerCoverageOldLoci.png", sep="_"), 
+       plot = range_coveragePlot,
+       path = plot_output_dir,
+       width = 8, height = 4, units = c("in"), dpi = 300)
+
+```
+
+Each sample is plotted as a line to show the variability in coverage within a sample and between samples, up to 10x coverage. There are gaps in these loci.  
+
+
+## Primer success
+
+### 1: Coverage at primer sites
+
+First, an easy check is to look at the coverage at the positions each primer targets. 
+
+```{r, echo=F, message=F, warning=F}
+primer_wobbleN <- dplyr::mutate(primer_boundaries, Primer_RM = gsub("K|M|R|W|Y", "N", Primer_RM))
+
+# check which reads fall in a range
+inRange <- unlist(sapply(unique(cov_df$position), function(p) getPrimer(p, primer_boundaries)))
+range_pos <- cbind.data.frame(position = unique(cov_df$position), primer_number = inRange) %>%
+  dplyr::filter(!is.na(primer_number))
+```
+
+```{r check_ranges, echo=F, message=F, warning=F, fig.width=12, fig.height=4}
+range_coverage <- tibble::rownames_to_column(data.frame(cov_norm), "position") %>%
+  dplyr::mutate(position = as.numeric(position)) %>%
+  tidyr::pivot_longer(-position, names_to = "sample", values_to = "norm_cov") %>%
+  dplyr::right_join(., range_pos) %>%
+  dplyr::group_by(primer_number, sample) %>%
+  dplyr::summarise(primer_med_cov = median(norm_cov), sd=sd(norm_cov)) %>%
+  dplyr::mutate(orientation = ifelse(grepl("F", primer_number), "Forward", "Reverse"),
+                 primer_name = gsub(".*\\_|-P.*", "\\2", primer_number))
+
+range_coveragePlot <- range_coverage %>% 
+  ggplot(aes(x=as.numeric(primer_name), y=primer_med_cov, group=primer_number)) +
+    geom_boxplot() +
+    labs(x="Primer", y="Average base depth\nnormalized coverage") +
+    facet_grid(orientation~.) +
+    theme_j() 
+range_coveragePlot
+ggsave(paste(format(Sys.time(), "%Y%m%d"), "mtDNA_primerCoverageWindows.png", sep="_"), 
+       plot = range_coveragePlot,
+       path = paste(project_dir, "plots", sep="/"),
+       width = 8, height = 4, units = c("in"), dpi = 300)
+```
+```{r, echo=F, message=F, warning=F, fig.width=12, fig.height=4}
+range_coveragePlot + ylim(0,5)
+```
+
+The primers are in genomic order. We can see that for some regions, the reverse primers appear to have more coverage. This isn't necessarily because those primers worked, since there are some overlaps between the end of some primers and the beginning of others. The uneven coverage across the genome supports variable success rates. 
+
+
+
+### 2: Exact match counting of primer pairs
+
+The portion of the pipeline that counts primers was updated from the first round of sequence processing. In this iteration, wobble bases in primers were replaced with N, and matching of the primer in reads was allowed with a degeneracy at these positions with seqkit. This sped up counting for larger sequencing files. 
+
+```{r, echo=F, message=F, warning=F}
+prim_files_full <- list.files(file.path(project_dir, "02_align", "primer_counts"), pattern="summary", full.names = T)
+prim_df <- dplyr::bind_rows(lapply(setNames(prim_files_full, gsub(".*NH_|_[ATCG].*", "\\2", basename(prim_files_full))), function(i){
+  tmp <- fread(i, sep="\t", header=F)
+  names(tmp) <- c("Primer_RM", "counts")
+  return(tmp)}), .id="sample")
+prim_df <- dplyr::left_join(prim_df, primer_wobbleN)
+
+# count the number of times a primer is found less than 100 times in a sample
+prim_df_wide <- tidyr::pivot_wider(dplyr::select(prim_df, sample, Primer_Name, counts), names_from="Primer_Name", values_from="counts")
+counts_gt100 <- data.frame(sample_count = apply(prim_df_wide[,-1], 2, function(x)sum(x > 100))) %>%
+  tibble::rownames_to_column("Primer_Name")
+
+primer_bar <- counts_gt100 %>%
+  ggplot(aes(x = reorder(Primer_Name, -sample_count), y = sample_count)) + 
+  geom_bar(stat = "identity") +
+  labs(x="Sample", y="Numer of samples with > 100\nreads containing primer sequence") + 
+  theme(axis.text.x = element_text(angle = 090, vjust = 0.5, hjust = 1))
+primer_bar
+```
+
+
+
+I do not want to establish the threshold for a successful primer, but with high sequencing coverage across samples I would consider a primer not seen in at least half of the samples as a start. These primers are not seen in at least half of the samples and should be removed or reworked to amplify the region of interest. 
+
+```{r, echo=F, message=F, warning=F}
+count_region <- dplyr::left_join(dplyr::filter(counts_gt100, sample_count < 0.5*96), primer_org) %>%
+  dplyr::arrange(sample_count)
+knitr::kable(count_region)
+```
+
+
+## Conclusions
+
+- When grouping by 100 bp windows, most gaps in genomic coverage from a median 0.5x coverage for samples with adequate whole genome coverage mimic the first round of sequencing. The replication of normalized coverage across the genome from both rounds suggests under and over representation of different regions is primer design dependent.
+
+- Most samples are approaching anticipated 80% coverage (defined as 100 reads at each base in the sample to be conservative).
+
+- Increased sequenced and new primer counting showed more primers are captured. This counting can capture primers that overlap with genomic sequences captured by a nearby primer. We do not have a bias for forward and reverse primers seen in the first round; but 6 primers failed across all samples.
+
+- I did not show the variation in alignment sites for the matched primers due to memory constraints with higher sequencing depth. These positions are available for individual primer follow-up. 

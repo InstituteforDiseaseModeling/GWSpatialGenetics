@@ -22,9 +22,9 @@ conda env create -f ngs_align.yml
 All settings for the pipeline live in the "configfile," an example is provided at `configGW_mtAll.yaml`. Edit this file to change the output directory and other settings. All sequencing file inputs depend on the metadata file specified; look at `metadata_example.tsv` for a template. 
 
 # Run the pipeline
-You can now run all steps of the pipeline with a single command. This will run everything from quality control to variant calling. Change the number of cores and jobs here to fit your machine. 
+You can now run all steps of the pipeline with a single command. This will run everything from quality control to variant calling. Change the number of cores and jobs here to fit your machine. The `--use-conda` flag has been added to source a custom conda environment for the final rule in the pipeline, creation of a primer QC report via R markdown. 
 ```
-snakemake -s path/to/git/clone/wg_processing.snakefile --configfile path/to/project/yaml/project.yaml --cores 8 --jobs 8
+snakemake -s path/to/git/clone/wg_processing.snakefile --configfile path/to/project/yaml/project.yaml --cores 8 --jobs 8 --use-conda
 ```
 Base quality score recalibration (BQSR) will take place with two iterations by default. The BQSR comparisons to the initial round of variant calling will guide if 2 iterations are sufficient to normalize read errors.
 
