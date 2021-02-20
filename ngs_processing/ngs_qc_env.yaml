@@ -16,3 +16,4 @@ dependencies:
   - r-tibble=3.0.6
   - pandoc
   - icu=58
+  - nbformat

@@ -26,34 +26,34 @@ if(any(check_list)):
 ################################################################################
 rule all:
     input:
-        join(PROJECT_DIR, "combined.g.vcf"),
         join(PROJECT_DIR, "03_variant_calls/jointGenotype_filtered.txt"),
 
-
 ################################################################################
-rule combine_gvcf:
+rule GenomicsDBImport:
     input: 
         file_list
     output: 
-        join(PROJECT_DIR, "01_combined/combined.g.vcf")
+        directory(join(PROJECT_DIR, "01_combined/genomicsDB"))
     params:
-        gvcf_string = lambda wildcards: expand("--variant " + "{file}", file=file_list)
+        gvcf_string = lambda wildcards: expand("-V " + "{file}", file=file_list)
     shell: """
-        gatk CombineGVCFs \
+        # set intervals based on the headers of the chromosome in the fasta file
+        intervals=$(grep ">" {REF_FILE} | cut -f 1 -d " " | tr -d ">" | tr "\n" "," | sed "s/,$//g")
+        gatk GenomicsDBImport \
             --reference {REF_FILE} \
             {params.gvcf_string} \
-            --output {output} \
+            --genomicsdb-workspace-path {output} \
+            -L $intervals
     """
-
 
 ################################################################################
 rule joint_genotyping:
-    input: rules.combine_gvcf.output
+    input: rules.GenomicsDBImport.output
     output: join(PROJECT_DIR, "02_haplocall/joint_genotype.vcf.gz")
     shell: """
         gatk GenotypeGVCFs \
             --reference {REF_FILE} \
-            --variant {input} \
+            --variant gendb://{input} \
             --output {output} \
     """
 
