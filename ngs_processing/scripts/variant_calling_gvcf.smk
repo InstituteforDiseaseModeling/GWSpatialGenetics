@@ -45,28 +45,32 @@ rule call_haplotypes:
     """
 
 ################################################################################
-rule combine_gvcf:
+rule GenomicsDBImport:
     input: 
         lambda wildcards: expand(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz"), sample=unique_samples, iteration=wildcards.iteration)
     output: 
-        join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/combined.g.vcf")
+        directory(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/genomicsDB"))
     params:
-        gvcf_string = lambda wildcards: expand("--variant " + join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz"), sample=unique_samples, iteration=wildcards.iteration)
+        gvcf_string = lambda wildcards: expand("-V " + join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.g.vcf.gz"), sample=unique_samples, iteration=wildcards.iteration)
     shell: """
-        gatk CombineGVCFs \
+        # set intervals based on the headers of the chromosome in the fasta file
+        intervals=$(grep ">" {REF_FILE} | cut -f 1 -d " " | tr -d ">" | tr "\n" "," | sed "s/,$//g")
+        gatk GenomicsDBImport \
             --reference {REF_FILE} \
             {params.gvcf_string} \
-            --output {output} \
+            --genomicsdb-workspace-path {output} \
+            -L $intervals
     """
+
 
 ################################################################################
 rule joint_genotyping:
-    input: rules.combine_gvcf.output
+    input: rules.GenomicsDBImport.output
     output: join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/joint_genotype.vcf.gz")
     shell: """
         gatk GenotypeGVCFs \
             --reference {REF_FILE} \
-            --variant {input} \
+            --variant gendb://{input} \
             --output {output} \
     """
 

@@ -24,8 +24,14 @@ All settings for the pipeline live in the "configfile," an example is provided a
 # Run the pipeline
 You can now run all steps of the pipeline with a single command. This will run everything from quality control to variant calling. Change the number of cores and jobs here to fit your machine. The `--use-conda` flag has been added to source a custom conda environment for the final rule in the pipeline, creation of a primer QC report via R markdown. 
 ```
-snakemake -s path/to/git/clone/wg_processing.snakefile --configfile path/to/project/yaml/project.yaml --cores 8 --jobs 8 --use-conda
+snakemake -s path/to/git/clone/gw_processing.snakefile --configfile path/to/project/yaml/configGW_mtAll.yaml --cores 8 --jobs 8 --use-conda
 ```
 Base quality score recalibration (BQSR) will take place with two iterations by default. The BQSR comparisons to the initial round of variant calling will guide if 2 iterations are sufficient to normalize read errors.
 
 That's it! At the end you will have VCF files with genotypes at positions. 
+
+# Combine multiple batches and join variant calling
+If you have multiple runs and want to combine all samples to enable better joint variant calling, use `gw_joint_calling.snakefile` and `config_joint_calling.yaml`. This pipeline takes in `.g.vcf.gz` files from each sample in each batch, and combines them into a GATK GenomicsDB. Variant calling is then done on the whole set. The configfile needs a file with a list of g.vcf files, one per line, an output directory, and the reference fasta file. Then, call the pipeline like so:
+```
+snakemake -s path/to/git/clone/gw_joint_calling.snakefile --configfile path/to/project/yaml/config_joint_calling.yaml --cores 8 --jobs 8
+```

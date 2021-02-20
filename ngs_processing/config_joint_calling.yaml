@@ -3,10 +3,10 @@
 # output all results here
 output_directory: '/home/bsiranos/idm_local/durrant_data/processing_combined'
 
-# file with list of g.vcf files to combine
+# file with list of g.vcf files to combine, one for each sample
 # listed one per row, absolute paths prefered 
 # make sure to use the right iteration!
-# example: processing_small/02_align/recalibrate/haplocall_2/combined.g.vcf
+# example: processing_small/02_align/recalibrate/haplocall_2/DOG14-5_2Iter.g.vcf.gz
 gvcf_list: "/home/bsiranos/idm_local/durrant_data/combine_list.txt"
 
 # reference file for alignment - should be .fasta
