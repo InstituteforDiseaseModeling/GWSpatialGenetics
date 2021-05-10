@@ -6,6 +6,14 @@ rule genome_coverage:
     shell: """
         samtools depth -aa -Q 20 {input} > {output}
     """
+################################################################################
+rule genome_coverage_dedup:
+    input:  rules.mark_duplicates.output.dupl_bam
+    output: join(PROJECT_DIR, "02_align/coverage_dedup/{ena_id}_pairAligned_coverage.txt"),
+    threads: 1
+    shell: """
+        samtools depth -aa -Q 20 {input} > {output}
+    """
 
 # trash?
 # ################################################################################
@@ -63,3 +71,38 @@ rule primer_summary:
     shell: """
         seqkit fx2tab {input.primers} | cut -f 2 |  while read pattern <&0; do echo -e $pattern"\t"$(grep -c $pattern {input.counts}); done > {output}
     """
+################################################################################
+rule filter_fastq_dedup:
+    input: rules.mark_duplicates.output.dupl_bam
+    output: temp(join(PROJECT_DIR, "02_align/{ena_id}_pairAligned_dedup_filt.fq"))
+    params:
+        map_qual = config['trim_galore']['quality']
+    threads: 4
+    shell: """
+         samtools view -F 260 -q {params.map_qual} -S -b {input} | samtools bam2fq - > {output}
+    """
+
+################################################################################
+rule primer_counts_dedup:
+    input:
+        primers = config['primer_file'],
+        align = rules.filter_fastq_dedup.output
+    output: join(PROJECT_DIR, "02_align/primer_counts_dedup/{ena_id}_primerCounts.txt")
+    params:
+        map_qual = config['trim_galore']['quality']
+    threads: 2
+    shell: """
+        seqkit locate --degenerate --pattern-file {input.primers} {input.align} > {output}
+    """
+
+################################################################################
+rule primer_summary_dedup:
+    input:
+        primers = config['primer_file'],
+        counts = rules.primer_counts_dedup.output
+    output: join(PROJECT_DIR, "02_align/primer_counts_dedup/{ena_id}_primerCounts_summary.txt")
+    threads: 1
+    shell: """
+        seqkit fx2tab {input.primers} | cut -f 2 |  while read pattern <&0; do echo -e $pattern"\t"$(grep -c $pattern {input.counts}); done > {output}
+    """
+
