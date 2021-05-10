@@ -481,7 +481,34 @@ for (coverage_threshold in coverage_thresholds){
   dev.off()
 
 }
+```
+We have found that samples with very low coverage breadth (percent of bases covered by at least x reads) are best to be removed from further analysis. Here we use a coverage threshold of 5 and breadth requirement of 50% to keep as many samples as possible. The samples below should be considered for removal from downstream analysis. 
+```{r, echo=F, message=F, warning=F}
+# some metric ov coverage breadth to determine if some samples should be eliminated
+# set a very permissinve 50% breadth at 5x coverage cutoff
+coverage_threshold <- 5
+cov_counts <- dplyr::mutate(cov_df, low_counts  = ifelse(coverage < coverage_threshold, T, F)) %>% dplyr::filter(low_counts == T )
+ranges <- bind_rows(lapply(unique(cov_counts$sample), function(i){
+  samp_tmp <- dplyr::filter(cov_counts, sample == i)
+  ranges <- cbind.data.frame(sample= gsub(".*NH_|_[ATCG].*", "\\2", i), 
+                   range = unlist(strsplit(contractSeqs(samp_tmp$position), ","))) %>%
+    tidyr::separate(range, c("start", "end")) %>%
+    tibble::rowid_to_column("range") %>%
+    dplyr::filter(!is.na(end)) %>%
+    dplyr::mutate(missing_bases = as.numeric(end) - as.numeric(start))
+}))
 
+percent_covered <- dplyr::group_by(ranges, sample) %>% 
+  dplyr::summarise(missing_bases = sum(missing_bases)) %>%
+  dplyr::mutate(covered_bases = round(((14628- missing_bases)/14628) * 100, 2)) %>%
+  dplyr::arrange(desc(covered_bases))
+rownames(percent_covered) <- percent_covered$sample
+outlier_samples <- percent_covered[percent_covered$covered_bases < 50, "sample"]
+kable(percent_covered[percent_covered$covered_bases < 50, ])
+
+# write out this table
+outf <- file.path(plot_output_dir, "mtDNA_poor_breadth_samples.tsv")
+write.table(percent_covered[percent_covered$covered_bases < 50, ], outf, sep='\t', quote = F, row.names = F, col.names = T)
 ```
 
 ```{r, echo=F, eval=F}
