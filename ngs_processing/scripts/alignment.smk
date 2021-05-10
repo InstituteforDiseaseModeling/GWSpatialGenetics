@@ -9,7 +9,7 @@ rule align_to_ref:
         fwd = rules.trim_galore.output.fwd, \
 		rev = rules.trim_galore.output.rev
     output:
-        join(PROJECT_DIR, "02_align/{ena_id}_pairAligned.bam")
+        join(PROJECT_DIR, "02_align/align/{ena_id}_pairAligned.bam")
     params:
         rg=r"@RG\tID:{ena_id}\tSM:{ena_id}"
     threads: 12
@@ -45,6 +45,22 @@ rule mark_duplicates:
             REMOVE_DUPLICATES=true \
             METRICS_FILE={output.dupl_log}
     """
+
+################################################################################
+# this now counts after the MarkDuplicates stage
+rule count_aligned_reads_dedup:
+    input:
+        expand(join(PROJECT_DIR, "02_align/derep/{ena_id}_pairAligned_duplMarked.bam"), ena_id=ena_ids)
+    output:
+        join(PROJECT_DIR, 'aligned_counts_dedup.txt')
+    shell: """
+        for i in {input}; do
+            samtools index "$i"
+            bn=$(basename "$i" | sed 's/_pairAligned_duplMarked.bam//g')
+            echo "$bn\t$(samtools view -c -F 260 $i)" >> {output}
+        done
+    """
+
 
 ################################################################################
 rule merge_sample_bams:

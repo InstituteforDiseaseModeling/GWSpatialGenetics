@@ -1,10 +1,21 @@
 # Rules for fastqc and multiqc
 
 ################################################################################
-rule pre_fastqc:
-    input:
+rule read_symlinks:
+    input: 
         fwd = lambda wildcards: read_map[wildcards.ena_id][0],
         rev = lambda wildcards: read_map[wildcards.ena_id][1],
+    output: 
+        fwd = join(PROJECT_DIR, "00_read_symlinks/{ena_id}_" + READ_SUFFIX[0] + ".fastq" + gz_ext),
+        rev = join(PROJECT_DIR, "00_read_symlinks/{ena_id}_" + READ_SUFFIX[1] + ".fastq" + gz_ext)
+    shell: """
+        ln -s {input.fwd} {output.fwd}
+        ln -s {input.rev} {output.rev}
+    """
+rule pre_fastqc:
+    input:
+        fwd = rules.read_symlinks.output.fwd,
+        rev = rules.read_symlinks.output.rev
     output:
         join(PROJECT_DIR,  "00_qc_reports/pre_fastqc/{ena_id}_" + READ_SUFFIX[0] + "_fastqc.html"),
         join(PROJECT_DIR,  "00_qc_reports/pre_fastqc/{ena_id}_" + READ_SUFFIX[1] + "_fastqc.html")
@@ -28,8 +39,8 @@ rule pre_multiqc:
 ################################################################################
 rule trim_galore:
     input:
-        fwd = lambda wildcards: read_map[wildcards.ena_id][0],
-        rev = lambda wildcards: read_map[wildcards.ena_id][1],
+        fwd = rules.read_symlinks.output.fwd,
+        rev = rules.read_symlinks.output.rev,
     output:
         fwd = join(PROJECT_DIR, "01_trimmed/{ena_id}_" + READ_SUFFIX[0] + "_val_1.fq" + gz_ext),
         rev = join(PROJECT_DIR, "01_trimmed/{ena_id}_" + READ_SUFFIX[1] + "_val_2.fq" + gz_ext)
