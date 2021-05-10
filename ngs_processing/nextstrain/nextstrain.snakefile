@@ -14,7 +14,7 @@ generef_file = ""
 genes_file = ""
 clades_file = ""
 colors_file = ""
-auspice_config_file = ""
+auspice_config_file = "/home/internal.idm.ctr/bsiranosian/projects/ben_fork/GWSpatialGenetics/ngs_processing/nextstrain/auspice_config.json"
 geo_info_file = "/home/internal.idm.ctr/bsiranosian/batch1_processing/nextstrain/geo_info.tsv"
 
 
@@ -203,7 +203,7 @@ rule export:
         # aa_muts = rules.translate.output.aa_data,
         # drms = rules.seqtraits.output.drm_data,
         # color_defs = colors_file,
-        # auspice_config = auspice_config_file,
+        auspice_config = auspice_config_file,
         geo_info = geo_info_file,
         # clades = rules.clades.output.clade_data
     output:
@@ -214,6 +214,7 @@ rule export:
             --metadata {input.metadata} \
             --node-data {input.branch_lengths} {input.traits}  {input.nt_muts} \
             --lat-longs {input.geo_info} \
+            --auspice-config {input.auspice_config} \
             --output {output.auspice_json} \
         """
             # --node-data {input.branch_lengths} {input.traits} {input.drms} {input.aa_muts} {input.nt_muts} {input.clades} \
