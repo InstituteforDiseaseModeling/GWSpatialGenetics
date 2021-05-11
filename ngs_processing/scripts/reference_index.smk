@@ -1,3 +1,4 @@
+from os.path import splitext
 
 ################################################################################
 rule build_ref_index:
@@ -22,7 +23,7 @@ rule build_ref_faidx:
 rule create_ref_dict:
     ''' Create sequence dictionary for GATK variant calling. '''
     input:  REF_FILE
-    output: REF_FILE.split(".")[0] + ".dict"
+    output: splitext(REF_FILE)[0] + ".dict"
     shell: """
         gatk CreateSequenceDictionary --REFERENCE {input}
     """

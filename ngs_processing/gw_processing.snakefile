@@ -32,10 +32,13 @@ max_iter=config['max_iter']
 rule all:
     input:
         expand(join(PROJECT_DIR,  "00_qc_reports/{step}_multiqc/multiqc_report.html"), step=['pre', 'post']),
-        expand(join(PROJECT_DIR, "02_align/{ena_id}_pairAligned.bam"), ena_id=ena_ids),
+        expand(join(PROJECT_DIR, "02_align/align/{ena_id}_pairAligned.bam"), ena_id=ena_ids),
         join(PROJECT_DIR, 'aligned_counts.txt'),
+        join(PROJECT_DIR, 'aligned_counts_dedup.txt'),
         expand(join(PROJECT_DIR, "02_align/coverage/{ena_id}_pairAligned_coverage.txt"), ena_id=ena_ids),
+        expand(join(PROJECT_DIR, "02_align/coverage_dedup/{ena_id}_pairAligned_coverage.txt"), ena_id=ena_ids),
         expand(join(PROJECT_DIR, "02_align/primer_counts/{ena_id}_primerCounts_summary.txt"), ena_id=ena_ids),
+        expand(join(PROJECT_DIR, "02_align/primer_counts_dedup/{ena_id}_primerCounts_summary.txt"), ena_id=ena_ids),
         expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_0Iter.bam"), sample=unique_samples), 
         expand(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.bam"),
          sample=unique_samples, iteration=list(range(0, max_iter+1))),

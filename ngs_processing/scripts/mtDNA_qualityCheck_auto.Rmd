@@ -27,6 +27,7 @@ for(p in c('data.table', 'dplyr', 'tidyr', "ggplot2",
 options(datatable.fread.datatable=FALSE)
 options(stringsAsFactors = FALSE)
 
+if(F){
 # set directories
 project_dir <- snakemake@params[["project_dir"]]
 plot_output_dir <- file.path(project_dir, 'plots')
@@ -34,6 +35,24 @@ if (!dir.exists(plot_output_dir)){ dir.create(plot_output_dir) }
 # primer fasta and metadata file
 primer_fasta_f <- snakemake@params[["primer_fasta_f"]]
 primer_org_f <- file.path(snakemake@scriptdir, "GWmtDNANGSprimers_v1.0_seqkit_metadata.tsv")
+}
+
+# testing arguments
+  # GW data
+  project_dir <- '~/pcloud_sync/idm/batch_1/'
+  plot_output_dir <- file.path(project_dir, 'plots')
+  if (!dir.exists(plot_output_dir)){ dir.create(plot_output_dir) }
+  primer_fasta_f <- '~/idm_local/dropbox_data/pipeline_files/GWmtDNANGSprimers_v1.0_seqkit.fa'
+  primer_org_f <- "~/projects/GWSpatialGenetics/ngs_processing/scripts/GWmtDNANGSprimers_v1.0_seqkit_metadata.tsv"
+  
+if(F){
+  # durrant data
+  project_dir <- '~/idm_local/durrant_data/processing/'
+  plot_output_dir <- file.path(project_dir, 'plots')
+  if (!dir.exists(plot_output_dir)){ dir.create(plot_output_dir) }
+  primer_fasta_f <- '~/idm_local/dropbox_data/pipeline_files/GWmtDNANGSprimers_v1.0_seqkit.fa'
+  primer_org_f <- "~/projects/GWSpatialGenetics/ngs_processing/scripts/GWmtDNANGSprimers_v1.0_seqkit_metadata.tsv"
+}
 
 # set plotting theme
 theme_j <- function () {
@@ -66,9 +85,6 @@ getPrimer <- function(x, data) {
   }
 }
 
-# set global options
-options(datatable.fread.datatable=FALSE)
-options(stringsAsFactors = FALSE)
 ```
 
 ## Introduction
@@ -81,6 +97,8 @@ Mitochondrial DNA sequencing data have been processed through the variant callin
 
 More important than the number of reads sequenced are the number of reads that could be uniquely aligned to the genome (MAPQ > 20). For an average minimum coverage of 5x across the Guinea worm mitochondrial genome, we would need ~750 100 base pair reads evenly scattered throughout the genome.
 
+We have plotted two versions of the above plot - the lower version counts reads after exact duplicates from PCR steps have been removed. Counts in this plot are expected to be much lower. 
+
 ```{r, echo=F, message=F, warning=F, fig.width=12, fig.height=4}
 align_readCounts <- read.delim(file.path(project_dir, "aligned_counts.txt"), header=F, sep="\t") %>%
   dplyr::mutate(V1 = gsub(".*NH_|_[ATCG].*", "\\2", V1)) 
@@ -92,6 +110,33 @@ align_read <- align_readCounts %>%
   theme(axis.text.x = element_text(angle = 090, vjust = 0.5, hjust = 1))
 align_read
 
+# do the same but for dereplicated reads only
+align_readCounts_dedup <- read.delim(file.path(project_dir, "aligned_counts_dedup.txt"), header=F, sep="\t") %>%
+  dplyr::mutate(V1 = gsub(".*NH_|_[ATCG].*", "\\2", V1)) 
+rownames(align_readCounts_dedup) <- align_readCounts_dedup$V1
+
+align_read_dedup <- align_readCounts_dedup %>%
+  ggplot(aes(x = reorder(V1, -V2), y = V2)) + 
+  geom_bar(stat = "identity") +
+  labs(x="Sample", y="Aligned reads (both pairs)", title='De-duplicated reads uniquely aligned to mitochondrial genome') + 
+  theme(axis.text.x = element_text(angle = 090, vjust = 0.5, hjust = 1))
+align_read_dedup
+
+# fraction one of the other
+align_df <- data.frame(sample=align_readCounts$V1, all_reads=align_readCounts$V2, dedup_reads=align_readCounts_dedup[align_readCounts$V1,"V2"])
+align_df <- align_df[order(align_df$all_reads, decreasing = T), ]
+align_df_melt <- melt(align_df)
+align_compare <- ggplot(align_df_melt, aes(x=sample, y=value, fill=variable)) + 
+  geom_bar(stat='identity') +
+  # scale_y_log10() + 
+  labs(title='Readcounts: all vs de-duplicated', y='reads')
+align_compare
+
+# what percentage is deduplicated
+align_df$pct_dedup <- align_df$dedup_reads / align_df$all_reads * 100
+ggplot(align_df, aes(x=pct_dedup)) + 
+  geom_histogram() +
+  labs(title='Distribution of percent deduplicated reads retained')
 ```
 
 
@@ -104,7 +149,16 @@ stat.df <- data.frame('Statistic' = c('total samples', 'mean', 'median', 'range'
                                  round(median(align_readCounts$V2), 2),
                                  paste(round(range(align_readCounts$V2), 2), collapse=' - '),
                                  sum(align_readCounts$V2 > cov.5x.limit)))
-kable(stat.df)
+kable(stat.df, caption = "All uniquely aligned reads")
+# and for dedup
+stat.df.dedup <- data.frame('Statistic' = c('total samples', 'mean', 'median', 'range', 'samples >5x'),
+                      result = c(nrow(align_readCounts_dedup), 
+                                 round(mean(align_readCounts_dedup$V2), 2),
+                                 round(median(align_readCounts_dedup$V2), 2),
+                                 paste(round(range(align_readCounts_dedup$V2), 2), collapse=' - '),
+                                 sum(align_readCounts_dedup$V2 > cov.5x.limit)))
+kable(stat.df.dedup, caption = "De-duplicated reads only")
+
 ```
 
 ## Coverage 
@@ -118,10 +172,18 @@ cov_df <- dplyr::bind_rows(lapply(setNames(cov_files_full, gsub("_pair.*", "", b
   tmp <- fread(i, sep="\t", header=F, select = c(2,3))
   names(tmp) <- c("position", "coverage")
   return(tmp)}), .id="sample")
-  ```
+
+cov_files_dedup <- list.files(file.path(project_dir, "02_align", "coverage_dedup"))
+cov_files_full_dedup <- list.files(file.path(project_dir, "02_align", "coverage_dedup"), full.names = T)
+cov_df_dedup <- dplyr::bind_rows(lapply(setNames(cov_files_full_dedup, gsub("_pair.*", "", basename(cov_files_full_dedup))), function(i){
+  tmp <- fread(i, sep="\t", header=F, select = c(2,3))
+  names(tmp) <- c("position", "coverage")
+  return(tmp)}), .id="sample")
+```
 
 ```{r coverage_wide, echo=F, message=F, warning=F}
 cov_wide <- tidyr::pivot_wider(cov_df, names_from=sample, values_from=coverage, values_fill=0)
+cov_wide_dedup <- tidyr::pivot_wider(cov_df_dedup, names_from=sample, values_from=coverage, values_fill=0)
 ```
 
 We may want to filter out any samples that have too low of read coverage across the genome to reduce noise in per site comparisons. Coverage is calculated by summing the coverage at all bases divided by the total number of bases in the mitochondrial genome. We want to retain samples that have a minimum average 5x per locus coverage.
@@ -130,14 +192,24 @@ We may want to filter out any samples that have too low of read coverage across 
 samp_cov <- as.vector(colSums(cov_wide[,-1])/nrow(cov_wide))
 samp1x <- names(cov_wide[,-1])[samp_cov >= 5]
 samp_covSub <- cov_wide[, c("position", samp1x)]
+
+samp_cov_dedup <- as.vector(colSums(cov_wide_dedup[,-1])/nrow(cov_wide_dedup))
+samp1x_dedup <- names(cov_wide_dedup[,-1])[samp_cov_dedup >= 5]
+samp_covSub_dedup <- cov_wide_dedup[, c("position", samp1x_dedup)]
 ```
 
 ```{r, echo=F, message=F, fig.width=12, fig.height=4}
 base_covAvg <- ggplot(mapping = aes(samp_cov)) + 
   geom_histogram(bins=100) +
   # facet_zoom(xlim = c(0, 1)) +
-  labs(x="Average base coverage", y="Number of samples") 
+  labs(title='Average base coverage: all uniquely aligned reads', x="Average base coverage", y="Number of samples") 
 base_covAvg 
+
+base_covAvg_dedup <- ggplot(mapping = aes(samp_cov_dedup)) + 
+  geom_histogram(bins=100) +
+  # facet_zoom(xlim = c(0, 1)) +
+  labs(title='Average base coverage: de-duplicated reads', x="Deduplicated: average base coverage", y="Number of samples") 
+base_covAvg_dedup
 ```
 `r length(samp_cov[samp_cov<5])` sample(s) that have less than 5x per base average coverage in this batch. 
 
@@ -150,13 +222,23 @@ cov_norm <- mapply('/', cov_wide[,-1],samp_cov)
 base_cov <- apply(cov_norm, 1, FUN=median, na.rm=TRUE)
 baseMedian1x <- cov_wide$position[base_cov >= 0.5]
 depth_covSub <- cov_norm[baseMedian1x,]
+
+cov_norm_dedup <- mapply('/', cov_wide_dedup[,-1],samp_cov_dedup)
+base_cov_dedup <- apply(cov_norm_dedup, 1, FUN=median, na.rm=TRUE)
+baseMedian1x_dedup <- cov_wide_dedup$position[base_cov_dedup >= 0.5]
+depth_covSub_dedup <- cov_norm_dedup[baseMedian1x_dedup,]
 ```
 
 
 ```{r, echo=F, message=F, fig.width=12, fig.height=4}
 ggplot() + aes(base_cov)+ 
   geom_histogram(binwidth=0.05, colour="black", fill="white") + 
-  labs(x="Median normalized coverage", y ="Frequency", title="Median normalized coverage \nAll samples, all positions shown") +
+  labs(x="Median normalized coverage: all uniquely aligned reads", y ="Frequency", title="Median normalized coverage: all uniquely aligned reads \nAll samples, all positions shown") +
+  scale_x_continuous(breaks = seq(min(base_cov), 5, 0.25), labels = function(x) round(x, 2))
+
+ggplot() + aes(base_cov_dedup)+ 
+  geom_histogram(binwidth=0.05, colour="black", fill="white") + 
+  labs(x="Median normalized coverage", y ="Frequency", title="Median normalized coverage: De-deduplicated reads \nAll samples, all positions shown") +
   scale_x_continuous(breaks = seq(min(base_cov), 5, 0.25), labels = function(x) round(x, 2))
 ```
 
@@ -179,11 +261,34 @@ cov_plot <- data.frame(cov_norm) %>%
   ggplot(aes(x=as.numeric(group), y=norm_cov, group=group)) +
   geom_boxplot(outlier.alpha = 0.1) +
   xlim(c(0,max(coord_cut$group, na.rm = T))) +
-  labs(x=paste0("Position  (", window_size, " base pair windows)"), y="Average base depth\nnormalized coverage") +
+  labs(title='All uniquely aligned reads', x=paste0("Position  (", window_size, " base pair windows)"), y="Average base depth\nnormalized coverage") +
   theme_j()
 cov_plot
+
+sampEx_dedup <- names(cov_wide_dedup[,-1])[samp_cov_dedup < 5]
+coord_cut_dedup <- data.frame(cbind(position = unique(cov_df_dedup$position), 
+                              group = as.numeric(cut(unique(cov_df_dedup$position), seq(0, max(cov_df_dedup$position), by=window_size)))))
+
+cov_plot_dedup <- data.frame(cov_norm_dedup) %>%
+  #dplyr::mutate(position = baseMedian1x) %>%
+  dplyr::mutate(position =unique(cov_df_dedup$position)) %>%
+  tidyr::pivot_longer(-position, names_to = "sample", values_to = "norm_cov") %>%
+  dplyr::filter(!sample %in% sampEx_dedup) %>%
+  dplyr::right_join(., coord_cut_dedup) %>%
+  ggplot(aes(x=as.numeric(group), y=norm_cov, group=group)) +
+  geom_boxplot(outlier.alpha = 0.1) +
+  xlim(c(0,max(coord_cut_dedup$group, na.rm = T))) +
+  labs(title = 'De-duplicated reads only', x=paste0("Position  (", window_size, " base pair windows)"), y="Average base depth\nnormalized coverage") +
+  theme_j()
+cov_plot_dedup
+
 ggsave(paste(format(Sys.time(), "%Y%m%d"), paste0("mtDNA_", window_size, "windowNormCoverage.png"), sep="_"), 
        plot = cov_plot,
+       path = paste(project_dir, "plots", sep="/"),
+       width = 8, height = 4, units = c("in"), dpi = 300) 
+
+ggsave(paste(format(Sys.time(), "%Y%m%d"), paste0("mtDNA_", window_size, "windowNormCoverage_dedup.png"), sep="_"), 
+       plot = cov_plot_dedup,
        path = paste(project_dir, "plots", sep="/"),
        width = 8, height = 4, units = c("in"), dpi = 300) 
 ```
@@ -194,6 +299,7 @@ Replot this without the outliers for visual clarity up to 5x coverage.
 
 ```{r, echo=F, message=F, warning=F}
 cov_plot + ylim(0,5) 
+cov_plot_dedup + ylim(0,5) 
 ```
 There are some gaps earlier in the genome that I believe are of interest, but a gap around 6000 base pairs is expected from Durrant et al. 2019 as a difficult region. 
 
@@ -205,9 +311,7 @@ The median coverage threshold examined above should change depending on average 
 
 For the primers on the top portion of the multipanel figure, I have added 100 base pairs from the end position for visual clarity. The lines on the bottom right figure represent stretches of the genome with less than 100 reads in each sample. The right of this figure highlights the percentage of bases with > 100 read coverage, aligned with the respective sample on the left. The dotted blue line is the target coverage of 80%. 
 
-```{r, echo=F, message=F, warning=F}
-cov_counts <- dplyr::mutate(cov_df, low_counts  = ifelse(coverage < 100, T, F)) %>% dplyr::filter(low_counts == T )
-
+```{r, echo=F, message=F, warning=F, fig.width=12, fig.height=14}
 in.seq <- function(x) {
     # returns TRUE for elments within ascending sequences
     (c(diff(x, 1), NA) == 1 & c(NA, diff(x,2), NA) == 2)
@@ -217,8 +321,173 @@ contractSeqs <-  function(x) {
     # returns string formatted with contracted sequences
     x[in.seq(x)] <- ""
     gsub(",{2,}", "-", paste(x, collapse=","), perl=TRUE)
-    }
+}
 
+# now do this for both 10 and 100 coverage
+coverage_thresholds <- c(10, 100)
+for (coverage_threshold in coverage_thresholds){
+  cov_counts <- dplyr::mutate(cov_df, low_counts  = ifelse(coverage < coverage_threshold, T, F)) %>% dplyr::filter(low_counts == T )
+  ranges <- bind_rows(lapply(unique(cov_counts$sample), function(i){
+    samp_tmp <- dplyr::filter(cov_counts, sample == i)
+    ranges <- cbind.data.frame(sample= gsub(".*NH_|_[ATCG].*", "\\2", i), 
+                     range = unlist(strsplit(contractSeqs(samp_tmp$position), ","))) %>%
+      tidyr::separate(range, c("start", "end")) %>%
+      tibble::rowid_to_column("range") %>%
+      dplyr::filter(!is.na(end)) %>%
+      dplyr::mutate(missing_bases = as.numeric(end) - as.numeric(start))
+  }))
+  
+  
+  ranges_wide <- tidyr::pivot_longer(ranges, cols = c("start", "end"), names_to="location", values_to="position")
+  
+  
+  cov_counts_dedup <- dplyr::mutate(cov_df_dedup, low_counts  = ifelse(coverage < coverage_threshold, T, F)) %>% dplyr::filter(low_counts == T )
+  ranges_dedup <- bind_rows(lapply(unique(cov_counts_dedup$sample), function(i){
+    samp_tmp <- dplyr::filter(cov_counts_dedup, sample == i)
+    ranges <- cbind.data.frame(sample= gsub(".*NH_|_[ATCG].*", "\\2", i), 
+                     range = unlist(strsplit(contractSeqs(samp_tmp$position), ","))) %>%
+      tidyr::separate(range, c("start", "end")) %>%
+      tibble::rowid_to_column("range") %>%
+      dplyr::filter(!is.na(end)) %>%
+      dplyr::mutate(missing_bases = as.numeric(end) - as.numeric(start))
+  }))
+  
+  
+  ranges_wide_dedup <- tidyr::pivot_longer(ranges_dedup, cols = c("start", "end"), names_to="location", values_to="position")
+  
+  percent_covered <- dplyr::group_by(ranges, sample) %>% 
+    dplyr::summarise(missing_bases = sum(missing_bases)) %>%
+    dplyr::mutate(covered_bases = round(((14628- missing_bases)/14628) * 100, 2)) %>%
+    dplyr::arrange(desc(covered_bases))
+  sample_ord <- percent_covered$sample
+  
+  percent_covered_dedup <- dplyr::group_by(ranges_dedup, sample) %>% 
+    dplyr::summarise(missing_bases = sum(missing_bases)) %>%
+    dplyr::mutate(covered_bases = round(((14628- missing_bases)/14628) * 100, 2)) %>%
+    dplyr::arrange(desc(covered_bases))
+  sample_ord_dedup <- percent_covered_dedup$sample
+  
+  # percent ordered
+  percent_covered_plot <- percent_covered %>%
+    ggplot(aes(x=covered_bases, y=factor(sample, levels=rev(sample_ord)))) +
+    geom_bar(stat = "identity") +
+    labs(x=paste0("Percent bases\nwith ", coverage_threshold, " reads"), y=NULL) +
+    geom_vline(xintercept=80, linetype="dashed", color="blue") +
+    theme(axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          #plot.margin = margin(0, 0, 0, 0, "cm"),
+          axis.ticks.y = element_blank(),
+          axis.ticks.length = unit(0, "pt")) +
+    xlim(0,100) + 
+    theme(plot.margin = margin(0, 0, 0, 0, "cm"))
+  
+  
+  percent_covered_plot_dedup <- percent_covered_dedup %>%
+    ggplot(aes(x=covered_bases, y=factor(sample, levels=rev(sample_ord)))) +
+    geom_bar(stat = "identity") +
+    labs(x=paste0("Percent bases\nwith ", coverage_threshold, " reads"), y=NULL) +
+    geom_vline(xintercept=80, linetype="dashed", color="blue") +
+    theme(axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          #plot.margin = margin(0, 0, 0, 0, "cm"),
+          axis.ticks.y = element_blank(),
+          axis.ticks.length = unit(0, "pt")) +
+    xlim(0,100) + 
+    theme(plot.margin = margin(0, 0, 0, 0, "cm"))
+  
+  
+  
+  # missing ranges plot
+  missing_lines <- ranges_wide %>%
+    ggplot(aes(x=as.numeric(position), y=factor(sample, levels=rev(sample_ord)), group=paste(sample, range)))+
+    geom_point(size=0.50) +
+    geom_line(size=0.30) +
+    xlim(0, 14628) +
+    labs(x="Position", y="Sample") + 
+    theme(plot.margin = margin(0, 0, 0, 0, "cm"))
+  
+  missing_lines_dedup <- ranges_wide_dedup %>%
+    ggplot(aes(x=as.numeric(position), y=factor(sample, levels=rev(sample_ord)), group=paste(sample, range)))+
+    geom_point(size=0.50) +
+    geom_line(size=0.30) +
+    xlim(0, 14628) +
+    labs(x="Position", y="Sample")+ 
+    theme(plot.margin = margin(0, 0, 0, 0, "cm"))
+  
+  # 
+  primer_org <- read.table(primer_org_f, sep='\t', quote='', header=T) 
+  # can't have the primer sequences online, so read them from the file supplied to snakemake 
+  primer_seq <- read.delim(primer_fasta_f, header = F)
+  seq_rows <- 1:(nrow(primer_seq)/2) *2
+  name_rows <- seq_rows -1
+  primer_seq_df <- data.frame(name=gsub('>', '', primer_seq[name_rows, 1]), 
+                              seq=primer_seq[seq_rows, 1])
+  rownames(primer_seq_df) <- primer_seq_df$name
+  # add to other df
+  primer_org$Primer_RM <- primer_seq_df[primer_org$Primer_Name, "seq"]
+  primer_boundaries <- primer_org %>%
+    dplyr::mutate(primer_number = gsub("F-|R-", "", Primer_Name)) %>%
+    dplyr::group_by(Primer_Name) %>%
+    dplyr::mutate(start = min(Start, End), end = max(Start, End)) %>%
+    #dplyr::mutate(start = Start, end = End) %>%
+    dplyr::select(Primer_Name, Primer_RM, start, end) %>% unique() 
+  
+  primer_long <- dplyr::mutate(primer_boundaries, 
+                               start = ifelse(grepl("F-", Primer_Name), start, start - 100),
+                               end = ifelse(grepl("F-", Primer_Name), end + 100, end)) %>%
+    tidyr::pivot_longer(cols = c("start", "end"), names_to="location", values_to="position")  %>%
+    dplyr::mutate(orientation = ifelse(grepl("F", Primer_Name), "Forward", "Reverse"),
+                   Primer_Name = gsub(".*\\_|-P.*", "\\2", Primer_Name))
+  
+  primers <- primer_long %>%
+    ggplot(aes(x=as.numeric(position), y=orientation, group=paste(Primer_Name, orientation))) +
+    geom_line(position = position_dodge(width = 0.1), aes(color=Primer_Name)) +
+    xlim(0, 14628) +
+    labs(x=NULL, y="Orientaton") +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          plot.margin = margin(0, 0, 0, 0, "cm"), 
+          axis.ticks.length = unit(0, "pt"),
+          axis.ticks = element_blank())+
+    guides(color=F)
+  
+    
+  bigplot <- ggarrange(primers, NULL, missing_lines, percent_covered_plot, 
+            ncol = 2, nrow = 2,  align = "hv", 
+            widths = c(3, 1), heights = c(1, 9))
+  bigplot_dedup <- ggarrange(primers, NULL, missing_lines_dedup, percent_covered_plot_dedup, 
+            ncol = 2, nrow = 2,  align = "hv", 
+            widths = c(3, 1), heights = c(1, 9))
+  bigplot <- annotate_figure(bigplot, top = paste0("All uniquely aligned reads, threshold: ", coverage_threshold))
+  bigplot_dedup <- annotate_figure(bigplot_dedup, top = paste0("De-duplicated reads, threshold: ", coverage_threshold))
+  
+  print(bigplot)
+  print(bigplot_dedup)
+  
+  # save a version of each of these in pdf, scaled by the number of samples
+  # nsamp/10 if greater than 120 samples
+  nsamp <- length(unique(ranges_wide$sample))
+  pdf.height <- max(nsamp/10, 12)
+  out.pdf <- file.path(plot_output_dir, paste(format(Sys.time(), "%Y%m%d"), paste0("mtDNA_primer_coverage_threshold_", coverage_threshold, ".pdf"), sep="_"))
+  pdf(out.pdf, height=pdf.height, width=8)
+  print(bigplot)
+  print(bigplot_dedup)
+  dev.off()
+
+}
+```
+We have found that samples with very low coverage breadth (percent of bases covered by at least x reads) are best to be removed from further analysis. Here we use a coverage threshold of 5 and breadth requirement of 50% to keep as many samples as possible. The samples below should be considered for removal from downstream analysis. 
+```{r, echo=F, message=F, warning=F}
+# some metric ov coverage breadth to determine if some samples should be eliminated
+# set a very permissinve 50% breadth at 5x coverage cutoff
+coverage_threshold <- 5
+cov_counts <- dplyr::mutate(cov_df, low_counts  = ifelse(coverage < coverage_threshold, T, F)) %>% dplyr::filter(low_counts == T )
 ranges <- bind_rows(lapply(unique(cov_counts$sample), function(i){
   samp_tmp <- dplyr::filter(cov_counts, sample == i)
   ranges <- cbind.data.frame(sample= gsub(".*NH_|_[ATCG].*", "\\2", i), 
@@ -229,87 +498,17 @@ ranges <- bind_rows(lapply(unique(cov_counts$sample), function(i){
     dplyr::mutate(missing_bases = as.numeric(end) - as.numeric(start))
 }))
 
-
-ranges_wide <- tidyr::pivot_longer(ranges, cols = c("start", "end"), names_to="location", values_to="position")
-```
-
-
-
-```{r, echo=F, message=F, fig.width=12, fig.height=14}
 percent_covered <- dplyr::group_by(ranges, sample) %>% 
   dplyr::summarise(missing_bases = sum(missing_bases)) %>%
   dplyr::mutate(covered_bases = round(((14628- missing_bases)/14628) * 100, 2)) %>%
   dplyr::arrange(desc(covered_bases))
-sample_ord <- percent_covered$sample
+rownames(percent_covered) <- percent_covered$sample
+outlier_samples <- percent_covered[percent_covered$covered_bases < 50, "sample"]
+kable(percent_covered[percent_covered$covered_bases < 50, ])
 
-# percent ordered
-percent_covered_plot <- percent_covered %>%
-  ggplot(aes(x=covered_bases, y=factor(sample, levels=rev(sample_ord)))) +
-  geom_bar(stat = "identity") +
-  labs(x="Percent bases\nwith 100 reads", y=NULL) +
-  geom_vline(xintercept=80, linetype="dashed", color="blue") +
-  theme(axis.text.y = element_blank(),
-        axis.title.y = element_blank(),
-        panel.grid.major=element_blank(),
-        panel.grid.minor=element_blank(),
-        #plot.margin = margin(0, 0, 0, 0, "cm"),
-        axis.ticks.y = element_blank(),
-        axis.ticks.length = unit(0, "pt")) +
-  xlim(0,100)
-
-
-# missing ranges plot
-missing_lines <- ranges_wide %>%
-  ggplot(aes(x=as.numeric(position), y=factor(sample, levels=rev(sample_ord)), group=paste(sample, range)))+
-  geom_point(size=0.50) +
-  geom_line(size=0.30) +
-  xlim(0, 14628) +
-  labs(x="Position", y="Sample")
-
-# 
-primer_org <- read.table(primer_org_f, sep='\t', quote='', header=T) 
-# can't have the primer sequences online, so read them from the file supplied to snakemake 
-primer_seq <- read.delim(primer_fasta_f, header = F)
-seq_rows <- 1:(nrow(primer_seq)/2) *2
-name_rows <- seq_rows -1
-primer_seq_df <- data.frame(name=gsub('>', '', primer_seq[name_rows, 1]), 
-                            seq=primer_seq[seq_rows, 1])
-rownames(primer_seq_df) <- primer_seq_df$name
-# add to other df
-primer_org$Primer_RM <- primer_seq_df[primer_org$Primer_Name, "seq"]
-primer_boundaries <- primer_org %>%
-  dplyr::mutate(primer_number = gsub("F-|R-", "", Primer_Name)) %>%
-  dplyr::group_by(Primer_Name) %>%
-  dplyr::mutate(start = min(Start, End), end = max(Start, End)) %>%
-  #dplyr::mutate(start = Start, end = End) %>%
-  dplyr::select(Primer_Name, Primer_RM, start, end) %>% unique() 
-
-primer_long <- dplyr::mutate(primer_boundaries, 
-                             start = ifelse(grepl("F-", Primer_Name), start, start - 100),
-                             end = ifelse(grepl("F-", Primer_Name), end + 100, end)) %>%
-  tidyr::pivot_longer(cols = c("start", "end"), names_to="location", values_to="position")  %>%
-  dplyr::mutate(orientation = ifelse(grepl("F", Primer_Name), "Forward", "Reverse"),
-                 Primer_Name = gsub(".*\\_|-P.*", "\\2", Primer_Name))
-
-primers <- primer_long %>%
-  ggplot(aes(x=as.numeric(position), y=orientation, group=paste(Primer_Name, orientation))) +
-  geom_line(position = position_dodge(width = 0.1), aes(color=Primer_Name)) +
-  xlim(0, 14628) +
-  labs(x=NULL, y="Orientaton") +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        panel.grid.major=element_blank(),
-        panel.grid.minor=element_blank(),
-        plot.margin = margin(0, 0, 0, 0, "cm"), 
-        axis.ticks.length = unit(0, "pt"),
-        axis.ticks = element_blank())+
-  guides(color=F)
-
-  
-ggarrange(primers, NULL, missing_lines, percent_covered_plot, 
-          ncol = 2, nrow = 2,  align = "hv", 
-          widths = c(3, 1), heights = c(1, 8))
-
+# write out this table
+outf <- file.path(plot_output_dir, "mtDNA_poor_breadth_samples.tsv")
+write.table(percent_covered[percent_covered$covered_bases < 50, ], outf, sep='\t', quote = F, row.names = F, col.names = T)
 ```
 
 ```{r, echo=F, eval=F}

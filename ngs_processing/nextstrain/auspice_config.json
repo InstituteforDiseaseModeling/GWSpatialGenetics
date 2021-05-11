@@ -1,0 +1,46 @@
+{
+ "title": "GW March 2021 data",
+ "maintainers": [
+   {"name": "Benjamin Siranosian"}
+ ],
+ "colorings": [
+  {
+   "key": "gt",
+   "title": "Genotype",
+   "type": "categorical"
+  },
+  {
+   "key": "num_date",
+   "title": "Sampling date",
+   "type": "continuous"
+  },
+  {
+   "key": "clade_membership",
+   "title": "Clade",
+   "type": "categorical"
+  },
+  {
+    "key": "country",
+    "title": "country",
+    "type": "categorical"
+  },
+  {
+    "key": "specific_location",
+    "title": "specific_location",
+    "type": "categorical"
+  },
+  {
+    "key": "host",
+    "title": "host",
+    "type": "categorical"
+  }
+ ],
+ "geo_resolutions": [
+   "country",
+   "specific_location"
+ ],
+ "filters": [
+  "country"
+ ]
+}
+
