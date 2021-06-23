@@ -27,7 +27,6 @@ for(p in c('data.table', 'dplyr', 'tidyr', "ggplot2",
 options(datatable.fread.datatable=FALSE)
 options(stringsAsFactors = FALSE)
 
-if(F){
 # set directories
 project_dir <- snakemake@params[["project_dir"]]
 plot_output_dir <- file.path(project_dir, 'plots')
@@ -35,9 +34,9 @@ if (!dir.exists(plot_output_dir)){ dir.create(plot_output_dir) }
 # primer fasta and metadata file
 primer_fasta_f <- snakemake@params[["primer_fasta_f"]]
 primer_org_f <- file.path(snakemake@scriptdir, "GWmtDNANGSprimers_v1.0_seqkit_metadata.tsv")
-}
 
 # testing arguments
+if(F){
   # GW data
   project_dir <- '~/pcloud_sync/idm/batch_1/'
   plot_output_dir <- file.path(project_dir, 'plots')
@@ -45,7 +44,6 @@ primer_org_f <- file.path(snakemake@scriptdir, "GWmtDNANGSprimers_v1.0_seqkit_me
   primer_fasta_f <- '~/idm_local/dropbox_data/pipeline_files/GWmtDNANGSprimers_v1.0_seqkit.fa'
   primer_org_f <- "~/projects/GWSpatialGenetics/ngs_processing/scripts/GWmtDNANGSprimers_v1.0_seqkit_metadata.tsv"
   
-if(F){
   # durrant data
   project_dir <- '~/idm_local/durrant_data/processing/'
   plot_output_dir <- file.path(project_dir, 'plots')
@@ -486,8 +484,8 @@ We have found that samples with very low coverage breadth (percent of bases cove
 ```{r, echo=F, message=F, warning=F}
 # some metric ov coverage breadth to determine if some samples should be eliminated
 # set a very permissinve 50% breadth at 5x coverage cutoff
-coverage_threshold <- 5
-cov_counts <- dplyr::mutate(cov_df, low_counts  = ifelse(coverage < coverage_threshold, T, F)) %>% dplyr::filter(low_counts == T )
+coverage_threshold_breadth <- 5
+cov_counts <- dplyr::mutate(cov_df, low_counts  = ifelse(coverage < coverage_threshold_breadth, T, F)) %>% dplyr::filter(low_counts == T )
 ranges <- bind_rows(lapply(unique(cov_counts$sample), function(i){
   samp_tmp <- dplyr::filter(cov_counts, sample == i)
   ranges <- cbind.data.frame(sample= gsub(".*NH_|_[ATCG].*", "\\2", i), 
@@ -503,12 +501,20 @@ percent_covered <- dplyr::group_by(ranges, sample) %>%
   dplyr::mutate(covered_bases = round(((14628- missing_bases)/14628) * 100, 2)) %>%
   dplyr::arrange(desc(covered_bases))
 rownames(percent_covered) <- percent_covered$sample
-outlier_samples <- percent_covered[percent_covered$covered_bases < 50, "sample"]
-kable(percent_covered[percent_covered$covered_bases < 50, ])
+
+# remove samples with less than 50% breadth at 5 coverage
+breadth.thresh <- 50
+outlier_samples <- percent_covered[percent_covered$covered_bases < breadth.thresh, "sample"]
+kable(percent_covered[percent_covered$covered_bases < breadth.thresh, ])
 
 # write out this table
-outf <- file.path(plot_output_dir, "mtDNA_poor_breadth_samples.tsv")
-write.table(percent_covered[percent_covered$covered_bases < 50, ], outf, sep='\t', quote = F, row.names = F, col.names = T)
+outf <- file.path(project_dir, "mtDNA_poor_breadth_sample_info.tsv")
+outf2 <- file.path(project_dir, "mtDNA_poor_breadth_samples.txt")
+poor.cov.df <- percent_covered[percent_covered$covered_bases < breadth.thresh, ]
+colnames(poor.cov.df)[3] <- paste0('percentage_breadth_cov_', coverage_threshold_breadth)
+write.table(poor.cov.df, outf, sep='\t', quote = F, row.names = F, col.names = T)
+write.table(poor.cov.df[,1], outf2, sep='\t', quote = F, row.names = F, col.names = F)
+
 ```
 
 ```{r, echo=F, eval=F}

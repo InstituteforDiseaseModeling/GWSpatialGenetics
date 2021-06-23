@@ -30,6 +30,11 @@
     "type": "categorical"
   },
   {
+    "key": "new_cluster",
+    "title": "new_cluster",
+    "type": "categorical"
+  },
+  {
     "key": "host",
     "title": "host",
     "type": "categorical"
