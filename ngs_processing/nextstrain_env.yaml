@@ -1,0 +1,18 @@
+name: nextstrain
+channels:
+  - r
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - augur
+  - auspice
+  - nextstrain-cli
+  - nextalign
+  - snakemake
+  - awscli
+  - git
+  - pip
+  - r-base
+  - vt
+  - vcftools

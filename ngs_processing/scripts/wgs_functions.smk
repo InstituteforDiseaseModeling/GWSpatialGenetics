@@ -44,13 +44,10 @@ if(any(check_list)):
 # map from sample prefix to reads (list of two)
 read_map = {a: [b,c] for a,b,c in zip(ena_ids, fq1_list, fq2_list)}
 
-# check all are .gz or not
-if all([a.endswith(".gz") for a in fq1_list]) and all([a.endswith(".gz") for a in fq2_list]):
-    gz_ext = '.gz'
-elif all([not a.endswith(".gz") for a in fq1_list]) and all([not a.endswith(".gz") for a in fq2_list]): 
-    gz_ext = ''
-else: 
-    sys.exit('All filenames must be gzipped, or not gzipped. No mixing.')
+# Ensure all files are gzipped
+if not all([a.endswith(".gz") for a in fq1_list]) and all([a.endswith(".gz") for a in fq2_list]):
+    sys.exit('All input read files must be gzipped!')
+gz_ext = ".gz"
 
 # get read suffix from the sample names
 read_suffix_1 = list(set([os.path.basename(a).split(".")[0].split("_")[-1] for a in fq1_list]))

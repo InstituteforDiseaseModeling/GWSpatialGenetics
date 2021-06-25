@@ -1,0 +1,45 @@
+# Configuration file for nextstrain pipeline
+# specify inputs and options here. 
+
+# output directory
+outdir: "nextstrain_iqtree"
+
+# tree building method
+# chose from iqtree, raxml, fasttree
+tree_method: "iqtree"
+
+# seq_file: The output of the variant calling pipeline, 
+# likely a vcf.gz file with cals for variants in each sample
+# usually named 03_variant_calls/jointGenotype_2Iter_filtered.vcf.gz
+seq_file: "03_variant_calls/jointGenotype_2Iter_filtered.vcf.gz"
+
+# meta_file: metadata about each sample
+# TAB DELIMITED file with the same sample names as in the vcf file above
+# one row per sample.
+# additional data can be provided as columns, and configured to be displayed
+# on the tree by modifying the auspice_config_file. I've included the following columns by default: 
+# name,strain,host,country,specific_location,date
+meta_file: "nextstrain/nextstrain_metadata.tsv"
+
+# geo_info_file: GPS coordinate definitions for each country and specific_location in the meta_file. 
+# TAB DELIMITED, one location per row, no header
+# columns are location_type, location_name, lat, long
+geo_info_file: "nextstrain/geo_info.tsv"
+
+# auspice_config_file: taken from the github repository, in the same folder as 
+# nextstrain.snakefile. This defines what metadata is presented with the tree,
+auspice_config_file: "/home/bsiranos/projects/GWSpatialGenetics/ngs_processing/nextstrain/auspice_config.json"
+
+# exclude_file: a list of samples that failed sequencing breadth-based quality checks. 
+# automatically outputted from the Rmarkdown script
+# by default, these samples had less than 50% of the genome covered 5x
+# default name: mtDNA_poor_breadth_samples.txt
+exclude_file: "mtDNA_poor_breadth_samples.txt"
+
+# ref_file: fasta file reference
+ref_file: "d_medinensis_mitochondrion.fasta"
+
+# For clustering defined outside of the nextstrain tree-building algorithm, what 
+# height to cut the hierarchical clustering at. This can be interpreted as the 
+# number of variants to separate the clusters. 
+hclust_height: 50
