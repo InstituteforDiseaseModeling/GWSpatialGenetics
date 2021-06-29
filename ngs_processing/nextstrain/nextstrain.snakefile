@@ -30,7 +30,8 @@ if tree_method not in ["iqtree", "raxml", "fasttree"]:
 rule all:
     input:
         auspice_json = join(outdir, "auspice/GW.json"),
-        new_metadata = splitext(meta_file)[0] + "_new_clusters.tsv"
+        new_metadata = splitext(meta_file)[0] + "_new_clusters.tsv",
+        hclust_figure = join(outdir, "clustering_figures/clustering_dendrogram.pdf")
 
 rule filter:
     input:
@@ -97,7 +98,8 @@ rule add_new_clusters:
         depth = rules.extract_depth.output,
         metadata = meta_file
     output:
-        new_metadata = splitext(meta_file)[0] + "_new_clusters.tsv"
+        new_metadata = splitext(meta_file)[0] + "_new_clusters.tsv",
+        hclust_figure = join(outdir, "clustering_figures/clustering_dendrogram.pdf")
     params:
         hclust_height = config['hclust_height'],
         outdir_figures = join(outdir, 'clustering_figures')
