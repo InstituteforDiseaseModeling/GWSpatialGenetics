@@ -81,15 +81,26 @@ rule extract_genotype:
     shell: """
         vcftools --vcf {input} --extract-FORMAT-info GT --out {params.outstring}
     """
+    
+rule extract_depth:
+    input: rules.vcf_decompose.output
+    output: join(outdir, "results/filtered_decomposed_depth.DP.FORMAT")
+    params: 
+        outstring = join(outdir, "results/filtered_decomposed_depth")
+    shell: """
+        vcftools --vcf {input} --extract-FORMAT-info DP --out {params.outstring}
+    """
 
 rule add_new_clusters:
     input:
         genotype = rules.extract_genotype.output,
+        depth = rules.extract_depth.output,
         metadata = meta_file
     output:
         new_metadata = splitext(meta_file)[0] + "_new_clusters.tsv"
     params:
-        hclust_height = config['hclust_height']
+        hclust_height = config['hclust_height'],
+        outdir_figures = join(outdir, 'clustering_figures')
     script: "scripts/add_new_clusters.R"
 
 

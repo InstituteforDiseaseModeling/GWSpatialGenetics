@@ -34,3 +34,28 @@ rule vcf2txt:
             -raw \
             --output {output}
     """
+
+
+###############################################################################
+# final filtration based on a few params
+# decompose the input VCF (changes biallelic variants)
+rule vcf_decompose:
+    input: rules.variant_filter.output
+    output: join(PROJECT_DIR, f"03_variant_calls/jointGenotype_{max_iter}Iter_filtered_decomposed.vcf")
+    shell: """
+        vt decompose {input} > {output}
+    """
+
+# remove samples with low depth as defined in the Rmarkdown processing
+# and pick variants that have a call in at least a proportion of samples
+rule vcf_max_missing: 
+    input: 
+        vcf = rules.vcf_decompose.output,
+        remove_samples = rules.post_qc_report.output.low_depth
+    output: join(PROJECT_DIR, f"04_variant_calls_final/jointGenotype_{max_iter}Iter_filtered_decomposed.vcf")
+    params:
+        max_missing = config['max_missing']
+    shell: """  
+        vcftools --gzvcf {input.vcf} --remove {input.remove_samples}  --recode -c | \
+        vcftools --vcf - --max-missing {params.max_missing} --recode -c >  {output}
+    """

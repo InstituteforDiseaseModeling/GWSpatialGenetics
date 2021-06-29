@@ -91,7 +91,9 @@ rule post_multiqc:
 # final quality check after all other files have been generated
 rule post_qc_report:
     input: expand(join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"), iteration=list(range(1,config['max_iter']+1)), extension=['vcf.gz', 'txt']),
-    output: join(PROJECT_DIR, "mtDNA_quality_report.pdf")
+    output: 
+        pdf = join(PROJECT_DIR, "mtDNA_quality_report.pdf"),
+        low_depth = join(PROJECT_DIR, "mtDNA_poor_breadth_samples.txt")
     params: 
         project_dir = PROJECT_DIR,
         primer_fasta_f = config['primer_file'],

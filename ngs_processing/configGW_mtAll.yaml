@@ -30,9 +30,13 @@ variant_filter:
   mapping_quality: 40.0
   mapping_rootsq: -12.5
   mapping_rank: -8.0
-  # final call set
   read_depth_min: 10.0
   rank_sum: 3.1
+  # final call set
+  # Exclude sites on the basis of the proportion of missing data
+  # (defined to be between 0 and 1, where 0 allows sites that are
+  # completely missing and 1 indicates no missing data allowed).
+  max_missing: 0.9
 
 # Fasta file containing names and Primer information 
 primer_file: '/home/bsiranos/idm_local/dropbox_data/pipeline_files/GWmtDNANGSprimers_v1.0_seqkit.fa'

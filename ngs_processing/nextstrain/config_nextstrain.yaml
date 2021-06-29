@@ -11,7 +11,7 @@ tree_method: "iqtree"
 # seq_file: The output of the variant calling pipeline, 
 # likely a vcf.gz file with cals for variants in each sample
 # usually named 03_variant_calls/jointGenotype_2Iter_filtered.vcf.gz
-seq_file: "03_variant_calls/jointGenotype_2Iter_filtered.vcf.gz"
+seq_file: "04_variant_calls_final/jointGenotype_2Iter_filtered.vcf"
 
 # meta_file: metadata about each sample
 # TAB DELIMITED file with the same sample names as in the vcf file above
