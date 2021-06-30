@@ -16,3 +16,6 @@ dependencies:
   - r-base
   - vt
   - vcftools
+  - r-rafalib
+  - r-viridis
+  - r-gplots

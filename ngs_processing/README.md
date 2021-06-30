@@ -28,7 +28,7 @@ snakemake -s path/to/git/clone/gw_processing.snakefile --configfile path/to/proj
 ```
 Base quality score recalibration (BQSR) will take place with two iterations by default. The BQSR comparisons to the initial round of variant calling will guide if 2 iterations are sufficient to normalize read errors.
 
-That's it! At the end you will have VCF files with genotypes at positions. 
+That's it! At the end you will have VCF files with genotypes at positions. The final, filtered callset will be in a folder `04_variant_calls_final` and will be filtered to remove samples with less than 50% breadth at a depth of 5 reads, and variants that had mostly missing data (controlled by the "max_missing parameter" in the config)
 
 ## Combine multiple batches and join variant calling
 If you have multiple runs and want to combine all samples to enable better joint variant calling, use `gw_joint_calling.snakefile` and `config_joint_calling.yaml`. This pipeline takes in `.g.vcf.gz` files from each sample in each batch, and combines them into a GATK GenomicsDB. Variant calling is then done on the whole set. The configfile needs a file with a list of g.vcf files, one per line, an output directory, and the reference fasta file. Then, call the pipeline like so:
@@ -63,4 +63,9 @@ auspice view --datasetDir nextstrain_iqtree/auspice/
 # I was able to fix this by appending the following to the command:
 HOST="localhost"; auspice view --datasetDir nextstrain_iqtree/auspice/
 ```
-Direct your browser to the link provided. The dataset is named 'GW' by default. 
+Direct your browser to the link provided. The dataset is named 'GW' by default.
+
+### Alternative clustering in Nexstrain
+As an alternative to the tree-building options in Nexstrain, I built a simple clustering method that works directly on the variant call data. This method first decomposes bilallelic sites into respective single-allele variants, then does hierarchical clustering with the ward.D2 method on the manhattan distance between genotype vectors. The output of the clustering will be in the output directory "clustering_figures". You can set a height on the hierarchical clustering to cut the tree and produce a number of discrete clusters, which can be visualized on the nextstrain tree by selecting the "Color By" parameter as "new_cluster" in the web browser. 
+
+If you want to try different clustering cutoffs, simply delete "outdir/clustering_figures/clustering_dendrogram.pdf", change the "hclust_height" parameter in the config, and re-run the Snakemake command. Only the last few rules will need to run, and it will be very quick.

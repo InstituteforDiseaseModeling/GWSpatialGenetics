@@ -48,5 +48,6 @@ rule all:
          iteration=list(range(1,max_iter+1)), extension=['vcf.gz', 'txt']),
         #join(PROJECT_DIR, "03_variant_calls/bcftools/all_merged.txt")
         # final QC report generated
-        join(PROJECT_DIR, "mtDNA_quality_report.pdf")
+        join(PROJECT_DIR, "mtDNA_quality_report.pdf"),
+        join(PROJECT_DIR, f"04_variant_calls_final/jointGenotype_{max_iter}Iter_filtered_decomposed.vcf")
 

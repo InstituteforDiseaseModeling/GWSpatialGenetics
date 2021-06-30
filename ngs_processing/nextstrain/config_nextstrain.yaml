@@ -10,8 +10,8 @@ tree_method: "iqtree"
 
 # seq_file: The output of the variant calling pipeline, 
 # likely a vcf.gz file with cals for variants in each sample
-# usually named 03_variant_calls/jointGenotype_2Iter_filtered.vcf.gz
-seq_file: "03_variant_calls/jointGenotype_2Iter_filtered.vcf.gz"
+# usually named 04_variant_calls_final/jointGenotype_2Iter_filtered.vcf
+seq_file: "04_variant_calls_final/jointGenotype_2Iter_filtered.vcf"
 
 # meta_file: metadata about each sample
 # TAB DELIMITED file with the same sample names as in the vcf file above
@@ -28,7 +28,7 @@ geo_info_file: "nextstrain/geo_info.tsv"
 
 # auspice_config_file: taken from the github repository, in the same folder as 
 # nextstrain.snakefile. This defines what metadata is presented with the tree,
-auspice_config_file: "/home/bsiranos/projects/GWSpatialGenetics/ngs_processing/nextstrain/auspice_config.json"
+auspice_config_file: "/home/internal.idm.ctr/bsiranosian/projects/ben_fork/GWSpatialGenetics/ngs_processing/nextstrain/auspice_config.json"
 
 # exclude_file: a list of samples that failed sequencing breadth-based quality checks. 
 # automatically outputted from the Rmarkdown script
@@ -37,9 +37,9 @@ auspice_config_file: "/home/bsiranos/projects/GWSpatialGenetics/ngs_processing/n
 exclude_file: "mtDNA_poor_breadth_samples.txt"
 
 # ref_file: fasta file reference
-ref_file: "d_medinensis_mitochondrion.fasta"
+ref_file: '/home/internal.idm.ctr/bsiranosian/references/d_medinensis_mitochondrion.fasta'
 
 # For clustering defined outside of the nextstrain tree-building algorithm, what 
 # height to cut the hierarchical clustering at. This can be interpreted as the 
 # number of variants to separate the clusters. 
-hclust_height: 50
+hclust_height: 45

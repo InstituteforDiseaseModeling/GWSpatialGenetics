@@ -5,6 +5,8 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - vt
+  - vcftools
   - _libgcc_mutex=0.1=main
   - _r-mutex=1.0.1=anacondar_1
   - aioeasywebdav=2.4.0=py37_1000
