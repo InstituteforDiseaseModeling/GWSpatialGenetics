@@ -21,6 +21,17 @@ conda env create -f ngs_align.yml
 ## Configure the pipeline
 All settings for the pipeline live in the "configfile," an example is provided at `configGW_mtAll.yaml`. Edit this file to change the output directory and other settings. All sequencing file inputs depend on the metadata file specified; look at `metadata_example.tsv` for a template. 
 
+### Update 08/2021: Optional addition to create metadata files.
+A customizable script has been included to generate a metadata file from a directory path and sample key file. The script handles naming schemes for the Cornell and Qiagen sequencing centers. The sample file for Qiagen must contain a sample_number and sample column in tab delimited columns at a minimum for matching. If no sample file is provided, the script will rename samples [s1...sN] up to the number of samples in the directory. 
+
+Note: Relevant sample information is in the Cornell name, sample key file is not required. 
+
+```
+snakemake -s /path/to/git/clone/ngs_processing/scripts/generate_manifest.smk --config fastq_dir='/path/to/raw_reads_dir' output_file='/path/to/metadata.tsv' mapping_file='/path/to/sample_key.txt'
+```
+If not providing a sample key, leave the option in the command line or provide a dummy file. If the sample key file does not exist, it will default to the [s1...sN] naming scheme.
+
+
 ## Run the pipeline
 You can now run all steps of the pipeline with a single command. This will run everything from quality control to variant calling. Change the number of cores and jobs here to fit your machine. The `--use-conda` flag has been added to source a custom conda environment for the final rule in the pipeline, creation of a primer QC report via R markdown. 
 ```

@@ -20,7 +20,7 @@ rule align_to_ref:
 ################################################################################
 rule count_aligned_reads:
     input:
-        expand(join(PROJECT_DIR, "02_align/{ena_id}_pairAligned.bam"), ena_id=ena_ids)
+        expand(join(PROJECT_DIR, "02_align/align/{ena_id}_pairAligned.bam"), ena_id=ena_ids)
     output:
         join(PROJECT_DIR, 'aligned_counts.txt')
     shell: """
@@ -37,12 +37,12 @@ rule mark_duplicates:
     output:
         dupl_bam = join(PROJECT_DIR, "02_align/derep/{ena_id}_pairAligned_duplMarked.bam"),
         dupl_log = join(PROJECT_DIR, "02_align/derep/{ena_id}_pairAligned_duplMarked.log")
-    threads: 8
+    threads: 4
     shell: """
         picard MarkDuplicates \
             INPUT={input} \
             OUTPUT={output.dupl_bam} \
-            REMOVE_DUPLICATES=true \
+            REMOVE_DUPLICATES=false \
             METRICS_FILE={output.dupl_log}
     """
 

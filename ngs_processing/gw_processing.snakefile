@@ -20,10 +20,10 @@ include: "scripts/wgs_functions.smk"
 include: "scripts/reference_index.smk"
 # include: "scripts/gem_mask.smk"
 include: "scripts/qc.smk"
-#include: "scripts/alignment.smk"
-#include: "scripts/primer_check.smk"
-#include: "scripts/variant_calling_gvcf.smk"
-#include: "scripts/variant_filtering.smk"
+include: "scripts/alignment.smk"
+include: "scripts/primer_check.smk"
+include: "scripts/variant_calling_gvcf.smk"
+include: "scripts/variant_filtering.smk"
 
 # maximum number of iterations for base quality score recalibration
 max_iter=config['max_iter']
@@ -32,22 +32,22 @@ max_iter=config['max_iter']
 rule all:
     input:
         expand(join(PROJECT_DIR,  "00_qc_reports/{step}_multiqc/multiqc_report.html"), step=['pre', 'post']),
-        #expand(join(PROJECT_DIR, "02_align/align/{ena_id}_pairAligned.bam"), ena_id=ena_ids[1:2]),
-        #join(PROJECT_DIR, 'aligned_counts.txt'),
-        #join(PROJECT_DIR, 'aligned_counts_dedup.txt'),
-        #expand(join(PROJECT_DIR, "02_align/coverage/{ena_id}_pairAligned_coverage.txt"), ena_id=ena_ids),
-        #expand(join(PROJECT_DIR, "02_align/coverage_dedup/{ena_id}_pairAligned_coverage.txt"), ena_id=ena_ids),
-        #expand(join(PROJECT_DIR, "02_align/primer_counts/{ena_id}_primerCounts_summary.txt"), ena_id=ena_ids),
-        #expand(join(PROJECT_DIR, "02_align/primer_counts_dedup/{ena_id}_primerCounts_summary.txt"), ena_id=ena_ids),
-        #expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_0Iter.bam"), sample=unique_samples), 
-        #expand(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.bam"),
-        # sample=unique_samples, iteration=list(range(0, max_iter+1))),
-        #expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_{iteration}Iter_bsqrCovariates.pdf"),
-        # sample=unique_samples, iteration= list(range(1,max_iter+1))),
-        #expand(join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"),
-        # iteration=list(range(1,max_iter+1)), extension=['vcf.gz', 'txt']),
-        #join(PROJECT_DIR, "03_variant_calls/bcftools/all_merged.txt")
+        #expand(join(PROJECT_DIR, "02_align/align/{ena_id}_pairAligned.bam"), ena_id=ena_ids),
+        join(PROJECT_DIR, 'aligned_counts.txt'),
+        join(PROJECT_DIR, 'aligned_counts_dedup.txt'),
+        expand(join(PROJECT_DIR, "02_align/coverage/{ena_id}_pairAligned_coverage.txt"), ena_id=ena_ids),
+        expand(join(PROJECT_DIR, "02_align/coverage_dedup/{ena_id}_pairAligned_coverage.txt"), ena_id=ena_ids),
+        expand(join(PROJECT_DIR, "02_align/primer_counts/{ena_id}_primerCounts_summary.txt"), ena_id=ena_ids),
+        expand(join(PROJECT_DIR, "02_align/primer_counts_dedup/{ena_id}_primerCounts_summary.txt"), ena_id=ena_ids),
+        expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_0Iter.bam"), sample=unique_samples), 
+        expand(join(PROJECT_DIR, "02_align/recalibrate/haplocall_{iteration}/{sample}_{iteration}Iter.bam"),
+         sample=unique_samples, iteration=list(range(0, max_iter+1))),
+        expand(join(PROJECT_DIR, "02_align/recalibrate/{sample}_{iteration}Iter_bsqrCovariates.pdf"),
+         sample=unique_samples, iteration= list(range(1,max_iter+1))),
+        expand(join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"),
+         iteration=list(range(1,max_iter+1)), extension=['vcf.gz', 'txt']),
+        #join(PROJECT_DIR, "03_variant_calls/bcftools/all_merged.txt"),
         # final QC report generated
-        #join(PROJECT_DIR, "mtDNA_quality_report.pdf"),
-        #join(PROJECT_DIR, f"04_variant_calls_final/jointGenotype_{max_iter}Iter_filtered_decomposed.vcf")
+        join(PROJECT_DIR, "mtDNA_quality_report.pdf"),
+        join(PROJECT_DIR, f"04_variant_calls_final/jointGenotype_{max_iter}Iter_filtered_decomposed.vcf")
 

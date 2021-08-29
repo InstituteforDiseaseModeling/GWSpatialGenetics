@@ -2,12 +2,8 @@
 
 ################################################################################
 rule read_symlinks:
-    input: 
-    output: expand(join(PROJECT_DIR, "00_read_symlinks/{ena_id}_R{read}.fastq.gz", ena_id = ena_ids, read = ['1', '2'])
-    shell: """
-        ln -s {input.fwd} {output.fwd}
-        ln -s {input.rev} {output.rev}
-    """
+    output: expand(join(PROJECT_DIR, "00_read_symlinks/{ena_id}_R{read}.fastq.gz"), ena_id = ena_ids, read = ['1', '2'])
+    run: symlink_creation(metadata, join(PROJECT_DIR, "00_read_symlinks"))
 
 rule pre_fastqc:
     input:
@@ -36,18 +32,16 @@ rule pre_multiqc:
 ################################################################################
 rule trim_galore:
     input:
-        fwd = join(PROJECT_DIR, "00_read_symlinks/{ena_id}_R1.fastq.gz")
+        fwd = join(PROJECT_DIR, "00_read_symlinks/{ena_id}_R1.fastq.gz"),
         rev = join(PROJECT_DIR, "00_read_symlinks/{ena_id}_R2.fastq.gz")
     output:
-        fwd = join(PROJECT_DIR, "01_trimmed/{ena_id}_R1_val_1.fq" + gz_ext),
-        rev = join(PROJECT_DIR, "01_trimmed/{ena_id}_R2_val_2.fq" + gz_ext)
+        fwd = join(PROJECT_DIR, "01_trimmed/{ena_id}_R1_val_1.fq.gz"),
+        rev = join(PROJECT_DIR, "01_trimmed/{ena_id}_R2_val_2.fq.gz")
     threads: 2
     params:
         q_min   = config['trim_galore']['quality'],
         min_len = config['trim_galore']['min_read_length'],
         outdir  = join(PROJECT_DIR, "01_trimmed/")
-    log:
-        join(PROJECT_DIR, "logs/{ena_id}_trim.log")
     shell: """
         mkdir -p {params.outdir}
         trim_galore --quality {params.q_min} \
@@ -85,14 +79,14 @@ rule post_multiqc:
 
 ################################################################################
 # final quality check after all other files have been generated
-# rule post_qc_report:
-#     input: expand(join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"), iteration=list(range(1,config['max_iter']+1)), extension=['vcf.gz', 'txt']),
-#     output: 
-#         pdf = join(PROJECT_DIR, "mtDNA_quality_report.pdf"),
-#     params: 
-#         project_dir = PROJECT_DIR,
-#         primer_fasta_f = config['primer_file'],
-#         output_low_depth = join(PROJECT_DIR, "mtDNA_poor_breadth_samples.txt")
-#     conda: "../ngs_qc_env.yaml"
-#     script: 
-#         "mtDNA_qualityCheck_auto.Rmd"
+rule post_qc_report:
+    input: expand(join(PROJECT_DIR, "03_variant_calls/jointGenotype_{iteration}Iter_filtered.{extension}"), iteration=list(range(1,config['max_iter']+1)), extension=['vcf.gz', 'txt']),
+    output: 
+        pdf = join(PROJECT_DIR, "mtDNA_quality_report.pdf"),
+    params: 
+        project_dir = PROJECT_DIR,
+        primer_fasta_f = config['primer_file'],
+        output_low_depth = join(PROJECT_DIR, "mtDNA_poor_breadth_samples.txt")
+    conda: "../ngs_qc_env.yaml"
+    script: 
+        "mtDNA_qualityCheck_auto.Rmd"

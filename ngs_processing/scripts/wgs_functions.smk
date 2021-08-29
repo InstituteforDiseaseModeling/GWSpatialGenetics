@@ -13,7 +13,10 @@ import sys
 PROJECT_DIR = config["output_directory"]
 REF_FILE = config['reference_file']
 
-metadata = pd.read_csv(metafile, delimiter = '\t')
+metadata = pd.read_csv(config['metadata_file'], delimiter = '\t').tail()
+ena_ids = list(metadata['ena_accession'])
+unique_samples = list(set(metadata['sample']))
+
 
 ################################################################################
 def assign_sample_replicates(metafile):
@@ -26,16 +29,13 @@ def assign_sample_replicates(metafile):
 
 ################################################################################
 def symlink_creation(metadata, symlink_dir):
-    ''' Create symlink names that are robust for the rst of the pipeline. '''
     # validate metadata column names
     # only a subset of them are necessary
     req_columns = ['ena_accession', 'sample', 'unit', 'fq1', 'fq2']
     if not(all([r in list(metadata.columns) for r in req_columns])):
         sys.exit("Metadata must contain the following columns " + str(req_columns))
 
-    # read in file names and paths from the config files used in multiple rules
     ena_ids = list(metadata['ena_accession'])
-    unique_samples = list(set(metadata['sample']))
     fq1_list = list(metadata['fq1'])
     fq2_list = list(metadata['fq2'])
     # ensure no duplicates in ena_ids, fq1, fq2
@@ -45,11 +45,7 @@ def symlink_creation(metadata, symlink_dir):
         sys.exit("Check metadata, duplictes in fq1 column")
     if (any(fq2_list.count(x) > 1  for x in fq2_list)):
         sys.exit("Check metadata, duplictes in fq2 column")
-
-    # Ensure all files are gzipped
-    if not all([a.endswith(".gz") for a in fq1_list]) and all([a.endswith(".gz") for a in fq2_list]):
-        sys.exit('All input read files must be gzipped!')
-
+    print(unique_samples)
     # ensure all files specified actually exist
     check_list = [not os.path.exists(a) for a in fq1_list+fq2_list]
     if(any(check_list)):
@@ -58,19 +54,26 @@ def symlink_creation(metadata, symlink_dir):
         for a in missing_files: print(a) 
         sys.exit("Some specified fastq files do not exist")
 
+    # Ensure all files are gzipped
+    if not all([a.endswith(".gz") for a in fq1_list]) and all([a.endswith(".gz") for a in fq2_list]):
+        sys.exit('All input read files must be gzipped!') 
+
+    # get read suffix from the sample names
+    read_suffix_1 = list(set([os.path.basename(a).split(".")[0].split("_R")[-1] for a in fq1_list]))
+    read_suffix_2 = list(set([os.path.basename(a).split(".")[0].split("_R")[-1] for a in fq2_list]))
+    if len(read_suffix_1) != 1 and len(read_suffix_2) != 1:
+        sys.exit('File read suffixes must be consistent')   
+
     # map from sample prefix to reads (list of two)
     read_map = {a: [b,c] for a,b,c in zip(ena_ids, fq1_list, fq2_list)}
 
-
-
-# get read suffix from the sample names
-# read_suffix_1 = list(set([os.path.basename(a).split(".")[0].split("_R")[-1] for a in fq1_list]))
-# read_suffix_2 = list(set([os.path.basename(a).split(".")[0].split("_R")[-1] for a in fq2_list]))
-# if len(read_suffix_1) == 1 and len(read_suffix_2) == 1:
-#     READ_SUFFIX = [read_suffix_1[0], read_suffix_2[0]]
-# else: 
-#     sys.exit('File read suffixes must be consistent')
-
+    # create symlink dir
+    if not os.path.exists(symlink_dir):
+        os.makedirs(symlink_dir)
+    # create symlinks for forward and reverse reads 
+    for key in read_map:
+        os.symlink(read_map[key][0], join(symlink_dir, "_".join([key, "R1.fastq.gz"])))
+        os.symlink(read_map[key][0], join(symlink_dir, "_".join([key, "R2.fastq.gz"])))  
 
 ################################################################################
 def recursive_bam(iteration):
