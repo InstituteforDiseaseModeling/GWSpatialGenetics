@@ -3,8 +3,7 @@ import numpy as np
 import pandas as pd
 from collections import Counter
 
-
-mapping_file = config['mapping_file'] if os.path.isfile(config['mapping_file']) else None
+mapping_file = config['sample_key'] if os.path.isfile(config['sample_key']) else None
 
 #######################################################################
 def manifest_generate(fastq_path, output, key_file):

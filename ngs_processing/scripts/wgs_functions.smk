@@ -13,7 +13,7 @@ import sys
 PROJECT_DIR = config["output_directory"]
 REF_FILE = config['reference_file']
 
-metadata = pd.read_csv(config['metadata_file'], delimiter = '\t').tail()
+metadata = pd.read_csv(config['metadata_file'], delimiter = '\t')
 ena_ids = list(metadata['ena_accession'])
 unique_samples = list(set(metadata['sample']))
 
