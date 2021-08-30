@@ -8,6 +8,7 @@ mapping_file = config['sample_key'] if os.path.isfile(config['sample_key']) else
 #######################################################################
 def manifest_generate(fastq_path, output, key_file):
     r1_reads = [f for f in os.listdir(fastq_path) if re.search(r'^(?!Undetermined)[\w\.-]*R1', f)]
+    print("First few files in fastq directory:", r1_reads[0:7])
     reads_df = pd.DataFrame({
         'fq1':[os.path.join(fastq_path, y) for y in r1_reads], 
         'fq2':[os.path.join(fastq_path, re.sub("R1", "R2", y)) for y in r1_reads]
@@ -15,6 +16,8 @@ def manifest_generate(fastq_path, output, key_file):
 
     if key_file is not None:
         key_file = pd.read_csv(key_file, sep="\t")
+        print("Header of key file:")
+        print(key_file.head())
         if 'sample' and 'sample_number' not in key_file.columns.tolist():
             sys.exit("Sample key file does not contain sample_number (Qiagen match) and sample (rename) column(s). Update sample key file and try again.")
         
@@ -45,13 +48,13 @@ def manifest_generate(fastq_path, output, key_file):
 #######################################################################
 rule all:
     input:
-        os.path.join(config['output_directory'], "metadata.tsv")
+        os.path.join(config['output_file'])
 
 #######################################################################
 rule create_manifest:
     input:
         fastq_dir = config['fastq_dir']
-    output: os.path.join(config['output_directory'], "metadata.tsv")
+    output: os.path.join(config['output_file'])
     run:
             manifest_generate(str(input.fastq_dir), str(output), mapping_file) 
            
