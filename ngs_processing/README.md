@@ -1,82 +1,68 @@
 # Pipeline for processing next-generation sequencing (fastq) files from raw sequencing.
 
 The Institute of Disease Modeling has been part of an interdisciplinary  collaboration with Elizabeth Thiele (Vassar) and James Cotton (Wellcome Sanger Institute) to maximize the value of epidemiological and genetics data to understand Guinea worm transmission in Chad. Preliminary analyses by IDM has shown whole mitochondrial genome data can give higher resolution information about genetic relatedness in a population than the current three-locus method. 
-This pipeline is intended to process NGS sequencing from whole mitochondrial DNA to variants, with additional features to count primers and coverage. 
+
+This pipeline is can process NGS sequencing from whole mitochondrial DNA to variants, however default settings gave been updated to process samples that have been processed using an amplicon panel. 
+
+#### Pipeline updates as of October 2021:
+* Single step single batch processing and joint genotyping with samples in existing data base
+* Detection and merging of duplicate biological samples by exact name matching across sequencing batches. 
+* Addition of base recalibration with known variants or iterative ecalibration using user specified samples
+* Optional deduplication of aligned reads 
+
+#### Pipeline updates as of August 2021:
+* Addition of rule that creates metadata files. Will be updated for different sequencing centers as needed. 
 
 
-## Download publicly available genomes:
-I downloaded the data corresponding to https://www.biorxiv.org/content/10.1101/808923v1. The data are available from the European Nucleotide Archive project ERP117282. This analysis focused solely on the samples collected in Chad as specified in Supplementary Table 1.
+## Config parameters
 
-I attempted to follow the pipeline from the preprint as best as possible. The GEM masking program was difficult to get running and mitochondrial mask regions were defined manually by the authors, thus some undesirable regions may be included in the SNPs. Instead of including a known variants file from masking, I followed GATK4 guidelines to call variants, filter HQ (QD > 30), and use those in the base quality recalibration step until convergence.
+#### WGS versus amplicon defaults
+The procedure for processing samples sequenced from standard whole genome sequencing compared to amplicons are mininal. Amplicon amplified samples do not undergo deduplication and produce additional quality reports to verify the success of primers.
+
+#### Base quality score recalibration (BQSR) variants
+In instances where a set of known variants is preferred to recalibrate sequencing errors, the file will check the existance of known variants provided in config. If a file is not provided, it will proceed to recalibrate using the provided samples in the metadata file with the interation specified in the config. BQSR will take place with two iterations by default. The BQSR comparisons to the initial round of variant calling will guide if 2 iterations are sufficient to normalize read errors.
+
+**Note: Cumulative genotype databases are generated separately for known or iterative calls from each batch.** 
+
+For Guinea worm, we provided a set of known variants from a set of 54 publicly available worm samples (Durrant et al. 2020, PLOS NTDs, ENA PRJEB1236). For more information on run specifications for these provided variants, see the bsqr_comparison.Rmd document in `./scripts.`  
+
+This pipeline follows the steps in the above publication as best as possible. The GEM masking program was difficult to get running and mitochondrial mask regions were defined manually by the authors, thus some undesirable regions may be included in the SNPs. Instead of including a known variants file from masking, we followed GATK4 guidelines to call and filter variants. The default parameters are 
+
 
 ## Set-up
 Pipelines are wrapped into Conda virtual environments and organized by Snakemake. These must be run on a Linux based system.
 
-Step 1: Download and set up Miniconda (https://docs.conda.io/en/latest/miniconda.html)
-Step 2: Run install to create a virtual environment with the necessary programs.
+1. Download and set up Miniconda (https://docs.conda.io/en/latest/miniconda.html)
+2. Run install to create a virtual environment with the necessary programs.
 ```
-conda env create -f ngs_align.yml
+conda env create -f ngs_align.yaml
 ```
 
 ## Configure the pipeline
 All settings for the pipeline live in the "configfile," an example is provided at `configGW_mtAll.yaml`. Edit this file to change the output directory and other settings. All sequencing file inputs depend on the metadata file specified; look at `metadata_example.tsv` for a template. 
 
-##### Update 08/2021: Create metadata files (optional)
-A customizable script has been included to generate a metadata file from a directory path and sample key file. The script handles naming schemes for the Cornell and Qiagen sequencing centers. The sample file for Qiagen must contain a minimum of `sample_number` and `sample` tab delimited columns for matching. If no sample file is provided, the script will rename samples [s1...sN] up to the number of samples in the directory. 
+#### Create metadata files (optional)
+A customizable script has been included to generate a metadata file from a directory path and sample key file. The script handles naming schemes for the Cornell and Qiagen sequencing centers. The sample file for Qiagen must contain a minimum of `sample_number` and `sample` tab delimited columns for matching. If no sample file is provided, the script will rename samples `[s1...sN]` up to the number of samples in the directory. 
 
 Note: Relevant sample information is in the Cornell name, sample key file is not required. 
 
 ```
 snakemake -s /path/to/git/clone/scripts/generate_manifest.smk --config fastq_dir='/path/to/raw_reads_dir' output_file='/path/to/metadata.tsv' sample_key='/path/to/sample_key.txt'
 ```
-If not providing a sample key, leave the option in the command line or provide a dummy file. If the sample key file does not exist, it will default to the [s1...sN] naming scheme.
+If not providing a sample key, leave the option in the command line or provide a dummy file. If the sample key file does not exist, it will default to the `[s1...sN]` naming scheme.
 
 
-## Run the pipeline
+## Run the pipeline 
+
 You can now run all steps of the pipeline with a single command. This will run everything from quality control to variant calling. Change the number of cores and jobs here to fit your machine. The `--use-conda` flag has been added to source a custom conda environment for the final rule in the pipeline, creation of a primer QC report via R markdown. 
-```
-snakemake -s path/to/git/clone/gw_processing.snakefile --configfile path/to/project/yaml/configGW_mtAll.yaml --cores 8 --jobs 8 --use-conda
-```
-Base quality score recalibration (BQSR) will take place with two iterations by default. The BQSR comparisons to the initial round of variant calling will guide if 2 iterations are sufficient to normalize read errors.
 
-That's it! At the end you will have VCF files with genotypes at positions. The final, filtered callset will be in a folder `04_variant_calls_final` and will be filtered to remove samples with less than 50% breadth at a depth of 5 reads, and variants that had mostly missing data (controlled by the "max_missing parameter" in the config)
+**Note: For updates that allow for joint calling across batches as a single step, this pipleline assumes all processed batches are placed in a single main directory without additional nesting,** for example `/home/{.?}/guinea_worm/{batch_name}`. The cumulative batch genotype calls will be available in `/home/{.?}/guinea_worm/joint_calls_{recal/known}`.
 
-## Combine multiple batches and join variant calling
-If you have multiple runs and want to combine all samples to enable better joint variant calling, use `gw_joint_calling.snakefile` and `config_joint_calling.yaml`. This pipeline takes in `.g.vcf.gz` files from each sample in each batch, and combines them into a GATK GenomicsDB. Variant calling is then done on the whole set. The configfile needs a file with a list of g.vcf files, one per line, an output directory, and the reference fasta file. Then, call the pipeline like so:
 ```
-snakemake -s path/to/git/clone/gw_joint_calling.snakefile --configfile path/to/project/yaml/config_joint_calling.yaml --cores 8 --jobs 8
+snakemake -s path/to/git/clone/gw_processing.snakefile --configfile path/to/project/yaml/config_example.yaml --cores 8 --jobs 8 --use-conda
 ```
 
-## Interactive visualization with Nextstrain
-[Nextstrain](https://nextstrain.org/) is an open-source visualization tool for pathogen genome data. We've built a pipeline to transform the variant call data into a format ready for visualization with Nextstrain. To use this, first install the program and dependencies in a new conda environment from the provided yaml file:
-```
-conda env create -f nextstrain_env.yml
+Depending on the BQSR options above, this pipeline takes in `.g.vcf.gz` files from each sample in each batch, and combines them into a GATK GenomicsDB Variant filter paramters match hard filtering suggestions from GATK while also removing variants that had mostly missing data (controlled by the "max_missing parameter" in the config). The final unfiltered and filtered calls, with all previous batches, can be found in `joint_calls_{recal/known}/vcf_files/{batch_name}.vcf.gz`.   
 
-# check the install worked
-conda activate nextstrain
-nextstrain check-setup --set-default
-# the output from the above command should end with 
-Setting default environment to native.
-```
-Then, copy the configuration file `nextstrain/config_nextstrain.yaml` to your working directory and change the parameters. You can control the method used for tree building and the output directory. 
+Individual batch calls are still run by default when using batch reaclibration, and the unfiltered and filtered VCFs can be found in `/home/{.?}/guinea_worm/{batch_name}/haplocall_{max_iteration}/joint_genotype[Filtered].vcf.gz`. For known variants, update the `wgs_functions.smk` user_output function to include the currently commented out file to run that rule.  
 
-Launch the snakemake workflow: 
-```
-# activate conda environment if necessary
-conda activate nextstrain
-snakemake -s nextstrain/nextstrain.snakefile --configfile nexstrain/config_nextstrain.yaml -j 1
-```
-
-Then, fire up the `auspice` viewer tool with the auspice path in your output directory:
-```
-auspice view --datasetDir nextstrain_iqtree/auspice/
-# You may see an error message about "XX is not a valid address."
-# I was able to fix this by appending the following to the command:
-HOST="localhost"; auspice view --datasetDir nextstrain_iqtree/auspice/
-```
-Direct your browser to the link provided. The dataset is named 'GW' by default.
-
-### Alternative clustering in Nexstrain
-As an alternative to the tree-building options in Nexstrain, I built a simple clustering method that works directly on the variant call data. This method first decomposes bilallelic sites into respective single-allele variants, then does hierarchical clustering with the ward.D2 method on the manhattan distance between genotype vectors. The output of the clustering will be in the output directory "clustering_figures". You can set a height on the hierarchical clustering to cut the tree and produce a number of discrete clusters, which can be visualized on the nextstrain tree by selecting the "Color By" parameter as "new_cluster" in the web browser. 
-
-If you want to try different clustering cutoffs, simply delete "outdir/clustering_figures/clustering_dendrogram.pdf", change the "hclust_height" parameter in the config, and re-run the Snakemake command. Only the last few rules will need to run, and it will be very quick.

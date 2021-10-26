@@ -15,7 +15,7 @@ def manifest_generate(fastq_path, output, key_file):
     })
 
     if key_file is not None:
-        key_file = pd.read_csv(key_file, sep="\t")
+        key_file = pd.read_csv(key_file, sep=",")
         print("Header of key file:")
         print(key_file.head())
         if 'sample' and 'sample_number' not in key_file.columns.tolist():

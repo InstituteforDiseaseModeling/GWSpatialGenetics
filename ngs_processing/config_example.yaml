@@ -1,15 +1,19 @@
 # config file for the GW ngs pipeline 
 
 # output all results here
-output_directory: '/home/bsiranos/idm_local/durrant_data/processing_small'
+output_directory: 'test_output_dir'
+
+# sample processing type
+# options: amplicon, shotgun
+protocol: amplicon
 
 # metadata file that defines all information about samples. Tab delimited
 # with the following columns. Forwrad and reverse sequencing reads should 
 # be specified in the fq1 and fq2 columns, and all must follow the same paired-end 
 # read specificaiton. 
-# 'ena_accession', 'sample', 'unit', 'fq1', 'fq2', 'host', 'country', 'variant.data'
-# an example is located on github
-metadata_file: '/home/bsiranos/idm_local/durrant_data/metadata_small.tsv'
+# 'ena_accession', 'sample', 'unit', 'fq1', 'fq2'
+# ena_accession is the full name prefix (or symlink prefix to be made)
+metadata_file: 'metadata_example.tsv'
 
 # specify parameters for TrimGalore -- automatically chcecks the adapter type
 trim_galore:
@@ -17,10 +21,11 @@ trim_galore:
   min_read_length: 30   # this is dependent on the technology used, most NGS is 100-150 so min of 30 is generous for throwing out reads
 
 # reference file for alignment - should be .fasta
-reference_file: '/home/bsiranos/idm_local/references/d_medinensis_mitochondrion.fasta'
+reference_file: 'd_medinensis_mitochondrion.fasta'
 
 variant_calling:
-  ploidy: 1     # the genome ploidy of the reference organism.
+  known_variants: ''
+  ploidy: 2     # the genome ploidy of the reference organism.
 
 # following recommendations from GATK for hard filters.
 # https://gatkforums.broadinstitute.org/gatk/discussion/2806/howto-apply-hard-filters-to-a-call-set
@@ -38,8 +43,9 @@ variant_filter:
   # completely missing and 1 indicates no missing data allowed).
   max_missing: 0.9
 
-# Fasta file containing names and Primer information 
-primer_file: '/home/bsiranos/idm_local/dropbox_data/pipeline_files/GWmtDNANGSprimers_v1.0_seqkit.fa'
+# fasta file containing names and Primer information 
+# follow-up directly for access to this file
+primer_file: 'GWmtDNANGSprimers_v1.0_seqkit.fa'
 
 # maximum number of iterations for base quality score recalibration 
 max_iter: 2

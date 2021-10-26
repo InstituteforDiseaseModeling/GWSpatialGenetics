@@ -71,6 +71,7 @@ rule primer_summary:
     shell: """
         seqkit fx2tab {input.primers} | cut -f 2 |  while read pattern <&0; do echo -e $pattern"\t"$(grep -c $pattern {input.counts}); done > {output}
     """
+
 ################################################################################
 rule filter_fastq_dedup:
     input: rules.mark_duplicates.output.dupl_bam
@@ -106,3 +107,16 @@ rule primer_summary_dedup:
         seqkit fx2tab {input.primers} | cut -f 2 |  while read pattern <&0; do echo -e $pattern"\t"$(grep -c $pattern {input.counts}); done > {output}
     """
 
+################################################################################
+# final quality check after all other files have been generated
+rule mt_qc_report:
+    input: get_summary_files()
+    output: 
+        pdf = join(PROJECT_DIR, "00_qc_reports", "mtDNA_quality_report.pdf"),
+    params: 
+        project_dir = PROJECT_DIR,
+        primer_fasta_f = config['primer_file'],
+        output_low_depth = join(PROJECT_DIR, "00_qc_reports", "mtDNA_poor_breadth_samples.txt")
+    conda: join(workflow.basedir, "ngs_qc_env.yaml")
+    script: 
+        "mtDNA_qualityCheck_auto.Rmd"
