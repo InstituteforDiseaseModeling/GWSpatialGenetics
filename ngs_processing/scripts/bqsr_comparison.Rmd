@@ -1,0 +1,234 @@
+---
+  title: "Comparison of BQSR strategies for variant discovery in Guinea worm amplicon sequenced samples. "
+author: "Jessica Ribado"
+date:  "`r format(Sys.time(), '%Y-%m-%d')`"
+output: pdf_document
+---
+  
+```{r setup, include=FALSE}
+# load libraries
+for(p in c('vcfR', 'data.table', 'dplyr', 'tidyr', "ggplot2",
+           'ggsci', 'ggforce', 'ggpubr', 'knitr')){
+  if(!p %in% installed.packages()[,1]){
+    print(p)
+    install.packages(p, repos =  "https://cloud.r-project.org", dependencies = T )
+    library(p, character.only = TRUE)
+  }
+  library(p, character.only = TRUE)
+}
+
+# set global options
+options(datatable.fread.datatable=FALSE)
+options(stringsAsFactors = FALSE)
+
+# set directories
+project_dir <- '/mnt/data/guinea_worm/processing/'
+plot_output_dir <- file.path(project_dir, 'joint_comparison', 'plots')
+if (!dir.exists(plot_output_dir)){ dir.create(plot_output_dir) }
+
+# set plotting theme
+theme_j <- function () {
+  theme_bw(base_size=16) %+replace%
+    theme(
+      # font sizes and color
+      panel.background  = element_blank(),
+      plot.background   = element_rect(fill="transparent", colour=NA),
+      plot.title        = element_text(size = rel(.85)),
+      strip.background  = element_rect(fill="transparent", colour=NA),
+      strip.text        = element_text(face="bold", size=rel(.6)),
+      axis.title        = element_text(size=rel(0.8)),
+      axis.text         = element_text(size=rel(0.6), color="grey30"),
+      # legend
+      legend.title         = element_text(size=rel(0.8)),
+      legend.text          = element_text(size=rel(0.6)),
+      legend.background    = element_rect(fill="transparent", colour=NA),
+      legend.key           = element_rect(fill="transparent", colour=NA),
+      legend.justification = "top"
+    )
+}
+
+theme_set(theme_j())
+
+################################################################################
+# functions
+# Subsets and converts haplotypes frm GATK vcf2txt
+gt_conversion <- function(df){
+  # Subsets and converts haplotypes frm GATK vcf2txt
+  gt <- read.table(df, header = T)
+  total_dp <- dplyr::select(gt, ends_with("DP"))
+  total_gt <- dplyr::select(gt, ends_with("GT"))
+  # remove genotypes where sequencing depth is less than 5
+  is.na(total_gt) <- is.na(total_dp) <- total_dp < 5
+  names(total_gt) <- gsub(".GT", "", names(total_gt))
+  total_gt <- data.frame(apply(total_gt, 2, function(x) gsub("\\|", "\\/", x)))
+  # remove samples with too few positions (< 75%) with sufficient coverage
+  percent_cov <- colSums(total_dp >= 5, na.rm = T)/nrow(gt)
+  sufficient_cov <- gsub(".DP", "", names(percent_cov)[which(percent_cov > 0.75)])
+  # create long version of the genotype array
+  sub_gt  <- select_(total_gt, .dots = sufficient_cov)
+  gt_uniq <- apply(sub_gt, 1, function(x) length(unique(x)))
+  gt_compare <- cbind.data.frame(gt[,1:4], gt_uniq = gt_uniq, sub_gt) %>%
+    dplyr::filter(gt_uniq > 1) %>% dplyr::select(-gt_uniq) %>%
+    tidyr::pivot_longer(cols = -names(gt)[1:4], names_to = "sample", values_to = "gt") 
+  return(gt_compare)
+}
+
+
+# Haploidize dipload data from VCF file
+vcf2haploid <- function(vcf_file, min_read_depth=5){
+  tmp_vcf <- vcfR::read.vcfR(vcf_file, verbose = FALSE )
+
+  # reset heterozygous genotypes as a single representation
+  gt <- extract.gt(tmp_vcf)
+  tmp_vcf@gt[,-1][is_het(gt)] <- "HET"
+  het_gt <- extract.gt(tmp_vcf)
+  het_gt <- data.frame(apply(het_gt, 2, function(x) gsub("\\|", "\\/", x)))
+  het_hap <- data.frame(apply(het_gt, 2, function(x) gsub("\\/.*", "", x)))
+
+  # remove genotypes with less than the minimum read depth
+  total_dp <- extract.gt(tmp_vcf, element = 'DP', as.numeric = TRUE)
+  is.na(het_hap) <- is.na(total_dp) <- total_dp < min_read_depth
+  
+  # recode numerical genotypes with alleles
+  gt_info  <- data.frame(tmp_vcf@fix)
+  gt_alleles <- lapply(paste(gt_info$REF, gt_info$ALT, sep=","),
+                       function(x) {unlist(strsplit(x, split="\\,"))})
+  names(gt_alleles) <- paste(gt_info$CHROM, gt_info$POS, sep="_")
+     
+  recode <- apply(het_hap %>% tibble::rownames_to_column("POS"), 1, function(y){
+      alleles = gt_alleles[[as.character(y[1])]]
+      sapply(y[-1], function(y) ifelse(y != 'HET', gsub(y, alleles[as.numeric(y) + 1], y), y))
+    })  
+  recode <- t(recode)
+  row.names(recode) <- paste(gt_info$CHROM, gt_info$POS, sep="_")
+  
+  return(data.frame(recode) %>% tibble::rownames_to_column("POS"))
+}  
+    
+```
+
+## Introduction
+
+Collaborators (Elizabeth Thiele and James Cotton) developed an amplicon panel consisting of 40 paired end primers to amplify 80% of the Guinea worm mitochondrial genome. Recently, we have reevaluated the original pipeline to identify variants to understand transmission at a finer scale.  
+
+Ideas to improve the pipeline under comparison:
+  
+  * Remove deduplication steps to increase depth at sites. Difficult to discern PCR duplicates from biological duplicates with amplification protocol.
+* Identify a set of known variants for recalibration from an independent set of samples characterized using WGS (Durrant et al. 2020, PLOS NTDs). Should allow for standardization of variant call recalibration for samples sequenced at different centers to avoid biases in recalibration from potentially missing portions of the genome. 
+* Calling variants as diploid to remove calls that may be driven by heteroplasmy signals.
+
+## Goal
+
+Identify the differences in variant calls using either a known set of variants derived from an independent population or variants derived from the sequenced batch population.
+
+Retaining duplicates and diploid calling should have a negligible effect on true signal. Diploid calling should lead to more filtered positions in the final calls. The positions used for recalibration may have an effect on identifying lower frequency alleles in the population. 
+
+## Weighing a known set of variants for recalibration
+
+Benefits:
+  
+  * Standardization across sequencing batches, ideal for multiple centers running the protocol
+* Faster processing with 1/3 of the steps
+* Smaller memory footprint without intermediate BAM files
+* Merging biological replicates across batches will be calibrated with the same sites ignored
+
+
+Limitations:
+  
+  * Limited to the variants identified in training data set. Assumes training set contains enough diversity to identify a spread of representative sites.
+
+Given the small training set sample size (54 samples) and the suggested high diversity of the Chad GW population, the limitation may have implications for reducing variants needed to group samples at a finer scale. 
+
+
+## Known variant identification from Durrant et al. 2020
+
+The data are available from the European Nucleotide Archive project PRJEB1236. Samples corresponding the the known variants are in 'NGS samples and accession numbers_withLabID.txt' provided by Elizabeth Thiele. These samples correspond to manuscript https://www.biorxiv.org/content/10.1101/808923v1.
+
+We successfully downloaded files for $54$ samples. Samples were processed with duplicates removed (WGS, PCR duplicates detectable) with two rounds of recalibration. Variants were hard filtered using the recommendations set by GATK (https://gatk.broadinstitute.org/hc/en-us/articles/360035890471-Hard-filtering-germline-short-variants).  The first and second round of recalibration resulted in a single SNP addition in the second round at position 5971. Manual inspection of the individual genotypes for the 54 samples at this position, some samples have 'heterozygous' calls suggesting likely either heteroplasmy. Would be filtered out by low MAF in analyses, but call numbers (>10) for alternative alleles suggest this variant is a true signal and should be considered in recalibration. A total of $332$ variant were identified. Variants with a snapping or overlapping deletion as an alternative allele (*) were manually checked to confirm the second alternative allele present in samples are a non-reference homozygous call. 
+
+Command line entries
+
+```{r, eval=F}
+snakemake -s ~/git/GWSpatialGenetics/ngs_processing/gw_processing.snakefile --configfile config.yaml -p --jobs 15
+
+parallel "zcat 03_variant_calls/haplocall_{}/joint_genotypeFiltered.vcf.gz | grep -v ^# | cut -f1,2  > 04_variant_check/haplocall{}_positions.txt" ::: 0 1 2
+
+diff 04_variant_check/haplocall1_positions.txt 04_variant_check/haplocall2_positions.txt
+
+zcat 03_variant_calls/haplocall_2/joint_genotypeFiltered.vcf.gz | grep ^# > ~/git/GWSpatialGenetics/ngs_processing/input_files/gw_known_variants.vcf 
+  zcat 03_variant_calls/haplocall_2/joint_genotypeFiltered.vcf.gz | grep -v ^# | -f1,2,3,4,5,6,7 >> ~/git/GWSpatialGenetics/ngs_processing/input_files/gw_known_variants.vcf
+```
+
+## Variant call comparisons
+
+These comparisons include 96 samples from the first successful pilot of the amplicon panel that were received in September 2020. This sequencing batch is an ideal set for this comparison because 96 samples in a single plate had a higher per sample coverage compared to subsequent sequencing batches with 384 samples. 
+
+However, it's also important to consider batch variation and sequencing depth differences on the called variants. Variants were called for all samples up to 10/2021 using both methods. 
+
+*Note: Due to update calling variants with a ploid of $2$, we should not compare to the original sequencing run that called with a ploidy of $1$. The variant call comparisons are both with a ploidy of $2$. EICC will need to rerun all samples from the alignment step on regardless of the method decided on by the team.*
+
+
+```{r load_data_gatk, echo = F, warning = F, eval=F}
+gt_files <- c('/mnt/data/guinea_worm/processing/joint_calling_known/vcf_filter/round_20200928_jointGenotypeFiltered.txt',
+             '/mnt/data/guinea_worm/processing/joint_calling_recal/vcf_filter/round_20200928_jointGenotypeFiltered.txt')
+gt_list <- lapply(gt_files, gt_conversion)
+names(gt_list) <- c("known", "identified")
+gt_df <- dplyr::bind_rows(gt_list, .id="variant_recal") %>%
+  tidyr::separate(ALT, c("ALT1", "ALT2"), sep=",") %>%
+  dplyr::mutate(gt_group = ifelse(gt == paste(REF, REF, sep="/"), "REF_HOM",
+                                  ifelse(gt == paste(ALT1, ALT1, sep="/") | gt == paste(ALT2, ALT2, sep="/"), "ALT_HOM", "HET")),
+                gt_group = ifelse(is.na(gt_group) | gt == "./.", "MISSING", gt_group)) %>%
+  dplyr::select(-gt) %>%
+  tidyr::pivot_wider(names_from = "variant_recal", values_from = "gt_group") %>%
+  dplyr::mutate(concordance = ifelse(is.na(known) | is.na(identified), "UNIQUE_VAR",
+      ifelse(known == identified, "T", 
+        ifelse((known == "MISSING" & identified == "HET") | (known == "MISSING" & identified == "MISSING"), "SAMPLE_FILTER",  "F"))))
+```
+
+```{r load_data_vcf, echo = F, warning = F, eval=F}
+skip_gt <- c("HET", NA)
+
+project_dir <- 'C:/Users/jribado/Documents'
+vcf_files <- c(paste(project_dir, 'known_vcf_files', 'round_20200928_jointGenotype.vcf.gz', sep="/"),
+               paste(project_dir, 'recal_vcf_files', 'round_20200928_jointGenotype.vcf.gz', sep="/"))
+
+gt_list <- lapply(vcf_files, vcf2haploid)
+names(gt_list) <- c("known", "identified")
+gt_df <- dplyr::bind_rows(gt_list, .id="variant_recal") %>%
+  tidyr::pivot_longer(cols = -c(variant_recal, POS), names_to = "sample", values_to="hap_gt") %>%
+  tidyr::pivot_wider(names_from = 'variant_recal', values_from = 'hap_gt') %>%
+   dplyr::mutate(concordance = ifelse(known == identified, "Match",
+                                   ifelse((known %in% skip_gt) & !(identified %in% skip_gt), 'Known het/missing',
+                                          ifelse(!(known %in% skip_gt) & (identified %in% skip_gt), 'Identified het/missing',
+                                                 ifelse(is.na(known) & !is.na(identified), "Identified unique",
+                                                        ifelse(!is.na(known) & is.na(identified), "Known unique", 'Mismatch'))))))
+```
+
+There are `r length(unique(gt_df$sample))` samples have sufficient coverage, defined as at least 5 reads, and the `r length(unique(gt_df$POS))` variants identified in this sample population. 
+
+How often do the positions correlate between the two runs?
+
+```{r grouping}
+gt_count <- count(gt_df, POS, concordance, .drop = FALSE) 
+gt_discord <- dplyr::filter(gt_count, concordance != "Match")
+```
+
+Of the overlapping positions, a proportion of `r nrow(gt_discord)/length(unique(gt_count$POS))` are discordant. Only `r nrow(dplyr::filter(gt_discord, n > 2))/length(unique(gt_count$POS))` of the calls differ in more than two samples, suggesting the discordant allele calls are not drastically different between the calling strategies. 
+
+```{r discordant_plot}
+discord_pos <-  dplyr::filter(gt_df, POS %in% gt_discord$POS, concordance != "Match")
+
+discord_p <- ggplot(discord_pos, aes(y=factor(POS), x=sample, fill=concordance)) + geom_tile() +
+  labs(x="Sample", y="Position") +
+  theme(axis.text.x = element_text(angle=90))
+discord_p
+```
+
+From the plot above showing which samples and genomic location are discordant between the calling strategies, we see that there are no apparent patterns for individual sites or samples which were already removed in previous steps. We do observe that there are more variants called across samples represented in blue when using using known variants to call the set. However, discordant calls are also missing in the known call set and called in the population recalibration step represented in the coral color.
+
+Known variants do tend to consistently call more positions across samples than using population recalibration. 
+
+
+## Difference effects on epidemiological interpretations
+
+Since there differences in heterozygous and missed calls using either recalibration option, and idea is to identify which option may be better for subsequent sequencing rounds is to use a set of samples that have been characterized with another sequencing technology. Sanger sequencing should have fewer errors and contain the dominant call. If we assume the lineages identified from Sanger sequencing in the Ribado et al. 2020 samples are conservative, how well does this new procedure group lineages for overlapping samples? 

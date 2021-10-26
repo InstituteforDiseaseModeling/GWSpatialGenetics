@@ -1,4 +1,3 @@
-name: ngs_qc
 channels:
   - r
   - conda-forge
