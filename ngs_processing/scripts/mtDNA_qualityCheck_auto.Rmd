@@ -455,11 +455,8 @@ if(primer_eval == TRUE){
 }
 ```
 
-```{r check_ranges, echo=T, message=F, warning=F, fig.width=12, fig.height=4}
+```{r, echo=F, message=F, warning=F, fig.width=12, fig.height=4}
 if(primer_eval == TRUE){
-# range_coverage <- tibble::rownames_to_column(data.frame(cov_df), "position") %>%
-#   dplyr::mutate(position = as.numeric(position)) %>%
-#   tidyr::pivot_longer(-position, names_to = "sample", values_to = "norm_cov") %>%
   range_coverage <- cov_df %>%
     dplyr::right_join(., range_pos) %>%
     dplyr::group_by(primer_number, sample) %>%
