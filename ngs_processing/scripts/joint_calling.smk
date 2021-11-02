@@ -52,18 +52,29 @@ rule merge_call_haplotypes:
     """
 
 ################################################################################
-rule update_gvcf_list:
+rule  update_gvcf_list:
     input:  gvcf_list
     output: join(JOINT_DIR, "gvcf_lists", f"{BATCH_NAME}_genomicDB_gvcfs.txt")
     run:
         if len(input) > 1:
             update_gvcf_list(str(input), str(output))
         else:
-            shell("echo {input}; mv {input} {output} && touch -h {output}")    
+            shell("echo {input}; mv {input} {output} && touch -h {output}")   
 
 ################################################################################
+rule cumulative_gvcf_list:
+    input:  rules.update_gvcf_list.output
+    output: temp(join(JOINT_DIR, "gvcf_lists", f"{BATCH_NAME}_cumulative.txt"))
+    params:
+        gvcf_dir = join(JOINT_DIR, "gvcf_lists")
+    shell: """
+        cd {params.gvcf_dir}
+        cat *_gvcfs.txt >> {output}
+    """
+                     
+################################################################################
 rule GenomicsDBImport_all:
-    input: rules.update_gvcf_list.output
+    input: rules.cumulative_gvcf_list.output
     output: join(JOINT_DIR, "genomicsDB/callset.json")
     threads: 10    
     params:
@@ -75,7 +86,7 @@ rule GenomicsDBImport_all:
         gatk GenomicsDBImport \
             --reference {REF_FILE} \
             --genomicsdb-workspace-path {params.db_dir} \
-            --batch-size 50 \
+            --batch-size 100 \
             -L $intervals \
             --sample-name-map {input} \
             --reader-threads {threads} 

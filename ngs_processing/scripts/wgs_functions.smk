@@ -9,6 +9,7 @@ from snakemake.io import Wildcards, expand
 import snakemake.rules
 import sys
 import json
+import glob
 
 ################################################################################
 # Specify project directories and files
@@ -198,24 +199,23 @@ def get_genomicDB_names(name_json):
 ################################################################################
 def check_sample_names(gvcf_list, db_dir):
     print("Checking names in gvcf list", gvcf_list)
-    gvcf_df = pd.read_csv(gvcf_list, sep="\t", header=None)
+    gvcf_df = pd.read_csv(gvcf_list, sep="\t", names=['sample', 'gvcf_path'])
     
-    db_json = join(db_dir, "genomicsDB", "callset.json")
-    
-    if os.path.isfile(db_json): 
-        print("Getting GenomicsDB names from", db_json)
-        db_names = get_genomicDB_names(db_json)
+    gvcf_files = glob.glob(join(db_dir, "gvcf_lists", "*_gvcfs.txt"))
+
+    if len(gvcf_files) > 0:
+        joint_tmp = pd.DataFrame()
+        for file in gvcf_files:
+            frame = pd.read_csv(file, delimiter="\t", names=['sample', 'gvcf_path'])
+            joint_tmp = joint_tmp.append(frame)
 
         # check for duplicate files in current database
-        dup_samples = [x for x in gvcf_df[0].tolist() if x in db_names]
+        dup_samples = [x for x in gvcf_df['sample'].tolist() if x in joint_tmp['sample'].tolist()]
         if len(dup_samples) > 0:
-            print(len(dup_samples), "duplicate sample(s) detected in newest batch. Identifying batches for dplicate sample files.")
-            dup_df = gvcf_df[gvcf_df[0].isin(dup_samples)]
-            joint_gvcf_files =  os.listdir(join(db_dir, "gvcf_lists"))
-            for joint_file in joint_gvcf_files:
-                joint_tmp = pd.read_csv(join(db_dir, "gvcf_lists", joint_file), sep="\t", header=None)
-                joint_tmp = joint_tmp[joint_tmp[0].isin(dup_samples)]
-                dup_df = pd.concat([dup_df, joint_tmp])    
+            print(len(dup_samples), "duplicate sample(s) detected in newest batch. Identifying batches for duplicate sample files.")
+            dup_filt  = gvcf_df[gvcf_df['sample'].isin(dup_samples)]
+            joint_dup = joint_tmp[joint_tmp['sample'].isin(dup_samples)]
+            dup_df = pd.concat([dup_filt, joint_dup])    
 
             # get the location of the bam files
             dup_df = dup_df.replace("03_variant_calls", "02_align/recalibrate", regex=True)
@@ -225,11 +225,11 @@ def check_sample_names(gvcf_list, db_dir):
             if not exists(join(db_dir, BATCH_NAME)):
                 os.makedirs(join(db_dir, BATCH_NAME))   
             # create mapping files for each duplicated sample
-            for dup_samp in dup_df[0].unique():
-                dup_tmp = dup_df[dup_df[0] == dup_samp].drop_duplicates()
-                dup_tmp[1].to_csv(join(db_dir, BATCH_NAME, f"{dup_samp}.txt"), index=False, header=False, sep="\t")
+            for dup_samp in dup_df['sample'].unique():
+                dup_tmp = dup_df[dup_df['sample'] == dup_samp].drop_duplicates()
+                dup_tmp['gvcf_path'].to_csv(join(db_dir, BATCH_NAME, f"{dup_samp}.txt"), index=False, header=False, sep="\t")
 
-            gvcf_df = gvcf_df[~gvcf_df[0].isin(dup_samples)]
+            gvcf_df = gvcf_df[~gvcf_df['sample'].isin(dup_samples)]
     else:
         print("GenomicsDB currently empty. Seeding with", gvcf_list, "sample file.")   
     
