@@ -40,7 +40,7 @@ country_gps <- rbind.data.frame(
     c('Ethiopia',  9.145, 40.4897),
     c('Angola', -11.2027, 17.8739),
     c('Cameroon', 12.3547, 7.3697)) 
-names(country_gps) <- c("case_gps", "gps_e", "gps_n")
+names(country_gps) <- c("case_gps", "gps_n", "gps_e")
 
 # set colors 
 original_bc_colors <- data.frame(
@@ -86,7 +86,7 @@ geo_tag <- function(metadata){
         exit("Metadata file missing longitude (GPS_E) and/or latitude (GPS_N) columns.")
     } 
 
-    gps_coords <- dplyr::select(metadata, gps_e, gps_n) %>%
+    gps_coords <- dplyr::select(metadata, gps_n, gps_e) %>%
         drop_na() %>% unique() %>%
         tibble::rowid_to_column("case_gps") 
 
