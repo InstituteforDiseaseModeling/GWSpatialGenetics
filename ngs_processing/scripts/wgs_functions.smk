@@ -202,10 +202,16 @@ def check_sample_names(gvcf_list, db_dir):
     gvcf_df = pd.read_csv(gvcf_list, sep="\t", names=['sample', 'gvcf_path'])
     
     gvcf_files = glob.glob(join(db_dir, "gvcf_lists", "*_gvcfs.txt"))
+    
+    # check the same batch name hasn't been run before - avoids duplicates if rerun without deleting GVCF sample 
+    gvcf_rm_batch = [x for x in gvcf_files if BATCH_NAME not in x]
+    if len(gvcf_rm_batch) < len(gvcf_files):
+        print("Current batch has been previously run.")
+        print("Ignoring samples with the same batch name", BATCH_NAME, "for checking duplicates.")
 
     if len(gvcf_files) > 0:
         joint_tmp = pd.DataFrame()
-        for file in gvcf_files:
+        for file in gvcf_rm_batch:
             frame = pd.read_csv(file, delimiter="\t", names=['sample', 'gvcf_path'])
             joint_tmp = joint_tmp.append(frame)
 

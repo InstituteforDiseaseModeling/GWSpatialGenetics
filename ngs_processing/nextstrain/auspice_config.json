@@ -1,51 +1,48 @@
 {
- "title": "GW March 2021 data",
+ "title": "General GW Metadata",
  "maintainers": [
-   {"name": "Benjamin Siranosian"}
+   {"name": "Institute for Disease Modeling"}
  ],
  "colorings": [
   {
-   "key": "gt",
-   "title": "Genotype",
-   "type": "categorical"
-  },
-  {
-   "key": "num_date",
-   "title": "Sampling date",
-   "type": "continuous"
-  },
-  {
-   "key": "clade_membership",
-   "title": "Clade",
-   "type": "categorical"
-  },
-  {
     "key": "country",
-    "title": "country",
+    "title": "Country",
     "type": "categorical"
   },
   {
-    "key": "specific_location",
-    "title": "specific_location",
+    "key": "case_gps",
+    "title": "Case_GPS",
     "type": "categorical"
   },
   {
-    "key": "new_cluster",
-    "title": "new_cluster",
-    "type": "categorical"
-  },
-  {
+    "key": "year",
+    "title": "Sampled_Year",
+    "type": "continuous"
+   },
+   {
     "key": "host",
-    "title": "host",
+    "title": "Host",
+    "type": "categorical"
+  },
+  {
+   "key": "original_barcode",
+   "title": "Gene_Protocol",
+   "type": "categorical"
+  },
+  {
+    "key": "identical",
+    "title": "Amplicon_Protocol",
     "type": "categorical"
   }
  ],
  "geo_resolutions": [
    "country",
-   "specific_location"
+   "case_gps"
  ],
  "filters": [
-  "country"
+  "country",
+  "original_barcode",
+  "identical"
  ]
 }
 

@@ -14,8 +14,8 @@ dependencies:
   - git
   - pip
   - r-base
-  - vt
-  - vcftools
-  - r-rafalib
-  - r-viridis
-  - r-gplots
+  - r-vcfr
+  - r-data.table
+  - r-tidyr
+  - r-dplyr
+  - r-ggthemes

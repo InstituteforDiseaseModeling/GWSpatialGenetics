@@ -23,8 +23,8 @@ options(stringsAsFactors = FALSE)
 
 # set directories
 project_dir <- '/mnt/data/guinea_worm/processing'
-plot_output_dir <- file.path(project_dir, 'joint_comparison', 'plots')
-if (!dir.exists(plot_output_dir)){ dir.create(plot_output_dir) }
+output_dir <- file.path('/mnt/data/guinea_worm', 'recal_comparison', 'plots')
+if (!dir.exists(output_dir)){ dir.create(output_dir) }
 
 # set plotting theme
 theme_j <- function () {
@@ -48,76 +48,182 @@ theme_j <- function () {
 }
 
 theme_set(theme_j())
+```
 
+```{r setup_functions, include=FALSE}
 ################################################################################
 # functions
-# Subsets and converts haplotypes frm GATK vcf2txt
-gt_conversion <- function(df){
-  # Subsets and converts haplotypes frm GATK vcf2txt
-  gt <- read.table(df, header = T)
-  total_dp <- dplyr::select(gt, ends_with("DP"))
-  total_gt <- dplyr::select(gt, ends_with("GT"))
-  # remove genotypes where sequencing depth is less than 5
-  is.na(total_gt) <- is.na(total_dp) <- total_dp < 5
-  names(total_gt) <- gsub(".GT", "", names(total_gt))
-  total_gt <- data.frame(apply(total_gt, 2, function(x) gsub("\\|", "\\/", x)))
-  # remove samples with too few positions (< 75%) with sufficient coverage
-  percent_cov <- colSums(total_dp >= 5, na.rm = T)/nrow(gt)
-  sufficient_cov <- gsub(".DP", "", names(percent_cov)[which(percent_cov > 0.75)])
-  # create long version of the genotype array
-  sub_gt  <- select_(total_gt, .dots = sufficient_cov)
-  gt_uniq <- apply(sub_gt, 1, function(x) length(unique(x)))
-  gt_compare <- cbind.data.frame(gt[,1:4], gt_uniq = gt_uniq, sub_gt) %>%
-    dplyr::filter(gt_uniq > 1) %>% dplyr::select(-gt_uniq) %>%
-    tidyr::pivot_longer(cols = -names(gt)[1:4], names_to = "sample", values_to = "gt") 
-  return(gt_compare)
-}
-
-
 # Haploidize dipload data from VCF file
-vcf2haploid <- function(vcf_file, min_read_depth=5){
-  tmp_vcf <- vcfR::read.vcfR(vcf_file, verbose = FALSE )
-
+vcf2haploid <- function(vcf, min_read_depth=5, proportion = 1){
+  
+  #  vcf <- vcfR::read.vcfR(vcf_files[[1]], verbose = FALSE)
+  tmp_vcf <- vcf
   # reset heterozygous genotypes as a single representation
   gt <- extract.gt(tmp_vcf)
-  tmp_vcf@gt[,-1][is_het(gt)] <- "HET"
+  # tmp_vcf@gt[,-1][is_het(gt)] <- "N"
+  is.na(tmp_vcf@gt[,-1][is_het(gt)]) <- TRUE
   het_gt <- extract.gt(tmp_vcf)
   het_gt <- data.frame(apply(het_gt, 2, function(x) gsub("\\|", "\\/", x)))
   het_hap <- data.frame(apply(het_gt, 2, function(x) gsub("\\/.*", "", x)))
 
-  # remove genotypes with less than the minimum read depth
-  total_dp <- extract.gt(tmp_vcf, element = 'DP', as.numeric = TRUE)
-  is.na(het_hap) <- is.na(total_dp) <- total_dp < min_read_depth
+  # revert heterozygous calls to homozygous if majority of calls go to one allele
+  tmp_vcf <- vcf
+  gt <- extract.gt(tmp_vcf)
+  is.na(tmp_vcf@gt[,-1][!is_het(gt)]) <- TRUE
+  # Extract allele depths.
+  ad <- extract.gt(tmp_vcf, element = "AD")
+  ad1 <- masplit(ad, record = 1)
+  ad2 <- masplit(ad, record = 2)
+  freq1 <- ad1/(ad1+ad2)
+  # create a copy of the matrix to convert to homozygous
+  het_hap_adj <- het_hap
+  het_hap_adj[freq1 >= proportion] <- "0"
+  het_hap_adj[freq1 <= 1-proportion] <- "1"
   
-  # identify variants with abnormalities for further filtering
-  # remove variants that are not observed in a single sample - i.e. called as part of a het call only
-   gt_counts <- cbind.data.frame(
-     ref =  rowSums(het_hap == "0", na.rm = T),
-     het = rowSums(het_hap == "HET", na.rm = T),
-     missing = rowSums(is.na(het_hap))
+  # remove genotypes with less than the minimum read depth
+  tmp_vcf <- vcf
+  total_dp <- extract.gt(tmp_vcf, element = 'DP', as.numeric = TRUE)
+  is.na(het_hap_adj) <- is.na(total_dp) <- total_dp < min_read_depth
+   
+  # paste with other sample information
+  gt2 <- extract.gt(tmp_vcf, extract = FALSE)
+  is.na(gt2) <- is.na(het_hap_adj)
+  gt_merge <- matrix(paste(as.matrix(het_hap_adj), gt2, sep=":"), nrow=nrow(gt), dimnames=dimnames(gt))
+  is.na(gt_merge[gt_merge == "NA:NA"]) <- TRUE
+  tmp_vcf@gt[,-1] <- gt_merge
+  
+  # apply filter
+  # filter samples with low read depth 
+  samp_keep <- (colSums(is.na(het_hap_adj))/nrow(het_hap_adj) < 0.5) & 
+    sapply(names(het_hap_adj), function(y) !grepl(y, "BAT"))
+  het_samp_rm <- het_hap_adj[, samp_keep]
+  
+  # filter out sites with a majority proportion of missing reads
+  gt_counts <- cbind.data.frame(
+     ref =  rowSums(het_samp_rm == "0", na.rm=T),
+     missing = rowSums(is.na(het_samp_rm))
    )
-   gt_counts$alt = ncol(het_hap) - rowSums(gt_counts)
+  gt_counts$alt = ncol(het_samp_rm) - rowSums(gt_counts)
+   
+  site_keep_sing <- dplyr::filter(gt_counts, alt > 0 & ref > 0 & missing < 0.1 * ncol(het_hap_adj))
+  site_keep <- dplyr::filter(gt_counts, alt > 1 & ref > 1 & missing < 0.1 * ncol(het_hap_adj))
+  
+  tmp_vcf@gt <- tmp_vcf@gt[, c(TRUE, samp_keep)]
+  tmp_vcf <- tmp_vcf[rownames(het_hap_adj) %in% row.names(site_keep), ]
+  
+  # organize summary statistics for filtering 
+  summary_df <- data.frame(rbind(
+    vcf_n_samples = ncol(het_hap),
+    vcf_n_variants = nrow(het_hap),
+    site_min_read_depth = min_read_depth,
+    heterozygous_threshold = paste(1 -proportion, proportion, sep=","),
+    filt_n_samples = sum(samp_keep),
+    filt_n_variants = nrow(site_keep_sing),
+    filt_n_variants_singleton_excluded = nrow(site_keep)
+  )) %>% tibble::rownames_to_column() 
+  names(summary_df) <- c("summary", "value")
+  
+  return(list(summary = summary_df,
+              vcf = tmp_vcf))
+}  
 
-  # recode numerical genotypes with alleles
-  gt_info  <- data.frame(tmp_vcf@fix)
+# no longer needed - vcfR recodes alleles 
+vcf2genotype <- function(tmp_vcf){
+  gt_info <- data.frame(tmp_vcf@fix)
+  gt_call <- extract.gt(tmp_vcf) 
+  
   gt_alleles <- lapply(paste(gt_info$REF, gt_info$ALT, sep=","),
                        function(x) {unlist(strsplit(x, split="\\,"))})
   names(gt_alleles) <- paste(gt_info$CHROM, gt_info$POS, sep="_")
-     
-  recode <- apply(het_hap %>% tibble::rownames_to_column("POS"), 1, function(y){
+
+  recode <- apply(data.frame(gt_call) %>% tibble::rownames_to_column("POS"), 1, function(y){
       alleles = gt_alleles[[as.character(y[1])]]
-      sapply(y[-1], function(y) ifelse(y != 'HET', gsub(y, alleles[as.numeric(y) + 1], y), y))
-    })  
+      sapply(y[-1], function(y) ifelse(y != ".", gsub(y, alleles[as.numeric(y) + 1], y), y))
+    })
   recode <- t(recode)
   row.names(recode) <- paste(gt_info$CHROM, gt_info$POS, sep="_")
   
-  # remove sites with more than 10% of samples missing positions after DP adjust and excessive heterozygous calls
-  site_keep <- dplyr::filter(gt_counts, alt > 1 & het < 0.1 * ncol(het_hap) & missing + alt != ncol(het_hap))
-  recode_filt <- recode[rownames(site_keep),]
+  return(data.frame(recode) %>% tibble::rownames_to_column("POS"))
+}
+
+# recode clusters by their presence
+grpid = function(x) match(x, unique(x))
+cluster_recode <- function(cluster_counts, bqsr_call, kmer_threshold){
+  cluster_sub <- dplyr::filter(cluster_counts %>% ungroup(), 
+                               variant_recal == !!bqsr_call & kmer_threshold == !!kmer_threshold) %>%
+    # dplyr::mutate(cluster_tmp = ifelse(count != 1, id, "Singleton")) %>%
+    dplyr::left_join(., bc_overlap) %>%
+    dplyr::mutate(bc_cluster = paste(Barcode, id, sep="_"),
+                  bc_cluster = ifelse(count != 1, bc_cluster, "Singleton"))
+    # dplyr::arrange(variant_recal, Barcode, kmer_threshold, desc(count)) %>%
+    # dplyr::group_by(Barcode, cluster_tmp) %>%
+    # dplyr::mutate(index = group_indices()) %>%
+    # dplyr::group_by(Barcode) %>%
+    # dplyr::mutate(id = index %>% grpid,
+    #               bc_cluster = paste(Barcode, id, sep="_"),
+    #               bc_cluster = ifelse(is.na(`SubmittedForNGS?`), NA,
+    #                                   ifelse(cluster_tmp == 'singleton', 'Singleton', bc_cluster)))
+    return(cluster_sub)
+} 
+
+
+# plotting functions
+bc_colors <- c(ggsci::pal_futurama("planetexpress")(11)[-c(9)], "#7E6148B2", "grey50")
+ggsci_pals <- c("red", "pink", "purple", "blue", "teal", "light-green", "lime", "amber", "brown", "deep-orange", "blue-grey") 
+get_palette <- function(cluster){
+  if(!cluster %in% seq(1,11)){
+    default <- cbind.data.frame(cluster = "Singleton", color = "grey60")
+  } else{
+    clust_sub <- clusters[grepl(paste0("^", cluster, "_"), clusters)]
+    if(length(clust_sub) == 0){
+      length = 1
+    } else{
+      length = length(clust_sub)
+    }
+    clust_cols <- pal_material(palette = ggsci_pals[as.numeric(cluster)], reverse=T)(length)
+    default <- cbind.data.frame(cluster = c(cluster, clust_sub), 
+                                color = c(clust_cols[1], clust_cols))
+  }
+  return (default)
+} 
+
+# cluster node maps 
+clust_recode_mapping <- function(recode_df){
   
-  return(data.frame(recode_filt) %>% tibble::rownames_to_column("POS"))
-}  
-    
+  # set order of barcodes for plotting
+  otu_ord <- c(seq(1,11), 
+               unique(recode_df$bc_cluster)[!grepl("Singleton", unique(recode_df$bc_cluster))], 
+               "Singleton")
+  otu_color <- paste0('d3.scaleOrdinal() .domain([', 
+                   paste0('"', paste(ggsci_cols$cluster, collapse='", "'), '"'),']) .range([', 
+                   paste0('"', paste(ggsci_cols$color, collapse='", "'), '"'), '])')
+  
+  # plot
+  otu_merge <- dplyr::filter(recode_df, !is.na(Barcode)) %>% unique()
+  nodes <- data.frame(
+    new_barcode=c(as.character(otu_merge$Barcode), 
+    as.character(otu_merge$bc_cluster)) %>% unique())
+  
+
+  # With networkD3, connection must be provided using id, not using real name like in the links dataframe.. So   we need to reformat it.
+  otu_merge$IDsource <- match(otu_merge$Barcode, nodes$new_barcode)-1 
+  otu_merge$IDtarget <- match(otu_merge$bc_cluster, nodes$new_barcode)-1
+
+  # Make the Network
+  p <- sankeyNetwork(Links = otu_merge, Nodes = nodes,
+              Source = "IDsource", Target = "IDtarget",
+              Value = "Barcode", NodeID = "new_barcode", 
+              colourScale=noquote(otu_color),
+              sinksRight=FALSE)
+  p
+  
+  file = paste0("recal", stringr::str_to_title(unique(recode_df$variant_recal)), "_", 
+                gsub("kmer_", "0.", unique(recode_df$kmer_threshold)), "_",
+                nrow(otu_merge), "samples.html")
+  setwd(output_dir)
+  saveNetwork(p, file=file, selfcontained = TRUE)
+  webshot(file, gsub("html", "png", file), vwidth = 1000, vheight = 900)
+}
 ```
 
 ## Introduction
@@ -206,52 +312,87 @@ gt_df <- dplyr::bind_rows(gt_list, .id="variant_recal") %>%
 ```
 
 ```{r load_data_vcf, echo = F, warning = F, eval=F}
-skip_gt <- c("HET", ".")
-
-#project_dir <- 'C:/Users/jribado/Documents'
 vcf_files <- c(paste(project_dir, 'joint_calling_known', 'vcf_files', 'round_202108_jointGenotypeFiltered.vcf.gz', sep="/"),
                paste(project_dir, 'joint_calling_recal', 'vcf_files', 'round_202108_jointGenotypeFiltered.vcf.gz', sep="/"))
 
-gt_list <- lapply(vcf_files, vcf2haploid)
-names(gt_list) <- c("known", "identified")
+tmp_vcfs <- lapply(vcf_files, function(y){
+  org_vcf  <- vcfR::read.vcfR(y, verbose = FALSE)
+  filt_vcf <- vcf2haploid(org_vcf)
+  
+  return(list(name = y, 
+              summary = filt_vcf[[1]],
+              org_vcf = org_vcf,
+              filt_vcf = filt_vcf[[2]]))
+              #gt_recode = gt_recode))
+  })
+names(tmp_vcfs) <- c("known", "identified")
+
+# save filted vcfs
+lapply(tmp_vcfs, function(y){
+  vcf_name <- basename(y$name)
+  recal <- gsub(".*calling_|/vcf_files.*", "\\2", y$name)
+  out_vcf <- paste(gsub("/plots", "", output_dir), paste(gsub("_joint.*", "", vcf_name), recal, "jointHaploidFilter.vcf.gz", sep="_"), sep="/")
+  vcfR::write.vcf(y$filt_vcf, out_vcf)
+})
+
+gt_summary <- bind_rows(lapply(tmp_vcfs, "[[", 2), .id="name") %>%
+  tidyr::pivot_wider(names_from = name, values_from = value)
+kable(gt_summary)
+write.table(gt_summary, file = paste(gsub("plots", "", output_dir), "20211104_variantRecalSummary.tsv", sep="/"), quote = F, row.names = F, sep="\t")
+```
+
+```{r compare}
+skip_gt <- c("N", ".")
+
+gt_list <- lapply(lapply(tmp_vcfs, "[[", 4), function(y) {
+  tmp_gt <- data.frame(extract.gt(y, element = "GT", return.alleles = TRUE))
+  tmp_long <-  tibble::rownames_to_column(tmp_gt, "POS") %>%
+    tidyr::pivot_longer(-POS, names_to = "sample", values_to = "allele") 
+  return(tmp_long)
+  })
+names(gt_list) <- names(tmp_vcfs) 
+
 gt_df <- dplyr::bind_rows(gt_list, .id="variant_recal") %>%
-  tidyr::pivot_longer(cols = -c(variant_recal, POS), names_to = "sample", values_to="hap_gt") %>%
-  tidyr::pivot_wider(names_from = 'variant_recal', values_from = 'hap_gt') %>%
+  tidyr::pivot_wider(names_from = 'variant_recal', values_from = 'allele') %>%
   dplyr::mutate_all(~replace(., is.na(.), ".")) %>%
-  dplyr::mutate(concordance = ifelse(known == identified, "Match",
-                                   ifelse((known %in% skip_gt) & !(identified %in% skip_gt), 'Known het/missing',
-                                          ifelse(!(known %in% skip_gt) & (identified %in% skip_gt), 'Identified het/missing',
-                                                 ifelse(known == "." & identified != ".", "Identified unique",
-                                                        ifelse(known != "." & identified == ".", "Known unique", 'Mismatch'))))))
+  dplyr::mutate(concordance = ifelse(known %in% skip_gt & identified %in% skip_gt, "Both het/missing",
+                  ifelse(known == identified, "Match",
+                         ifelse((known %in% skip_gt) & !(identified %in% skip_gt), 'Known het/missing',
+                                ifelse(!(known %in% skip_gt) & (identified %in% skip_gt), 'Identified het/missing',
+                                        ifelse(known == "." & identified != ".", "Identified unique",
+                                              ifelse(known != "." & identified == ".", "Known unique", 'Mismatch')))))))
 ```
 
 There are `r length(unique(gt_df$sample))` samples have sufficient coverage, defined as at least 5 reads, and the `r length(unique(gt_df$POS))` variants identified in this sample population. 
 
 How often do the positions correlate between the two runs?
 
-```{r grouping}
+```{r grouping,echo = F, warning = F}
 gt_count <- count(gt_df, POS, concordance, .drop = FALSE) 
-gt_discord <- dplyr::filter(gt_count, concordance != "Match")
+gt_category <- dplyr::group_by(gt_count, concordance) %>%
+  dplyr::summarise(Sum = sum(n)) %>% ungroup %>%
+  dplyr::mutate(Percent = round((Sum / sum(Sum))*100, 2)) %>%
+  dplyr::arrange(desc(Sum))
+kable(gt_category)
+write.table(gt_category, file = paste(gsub("plots", "", output_dir), "20211104_variantDiffEnumerate.tsv", sep="/"), quote = F, row.names = F, sep="\t")
 ```
 
-Of the overlapping positions, a proportion of `r nrow(gt_discord)/length(unique(gt_count$POS))` are discordant. Only `r nrow(dplyr::filter(gt_discord, n > 2))/length(unique(gt_count$POS))` of the calls differ in more than two samples, suggesting the discordant allele calls are not drastically different between the calling strategies. 
+Less than 3% of all calls differ between the two recalibration strategies. Where do these differences lie? 
 
-```{r discordant_plot}
+```{r discordant_plot, echo = F, warning = F}
+gt_discord <- dplyr::filter(gt_count, concordance != "Match")
 discord_pos <-  dplyr::filter(gt_df, POS %in% gt_discord$POS, concordance != "Match") %>%
   dplyr::mutate(POS = as.numeric(gsub(".*_", "", POS)))
   
-
 discord_p <- ggplot(discord_pos, aes(y=factor(POS), x=sample, fill=concordance)) + geom_tile() +
   labs(x="Sample", y="Position") +
   theme(axis.text.x = element_blank())
 discord_p
+ggsave("bqsr_gt_differences.png", path=output_dir, 
+       plot=discord_p, width=12, height=8, units=c("in"), dpi=300)
 ```
 
 From the plot above showing which samples and genomic location are discordant between the calling strategies, we see that there are no apparent patterns for individual sites or samples which were already removed in previous steps. We do observe that there are sets of variants that would be eliminated using one call of the other (anything that is het/missing in either call scenario), but it doesn't appear biased. Good news is that we don't see homozygous call changes (mismatches) too often. 
 
-**It seems using a known set of variants is sufficient to recall the same variants as an iterative recalibration set.**
+**It seems using a known set of variants is sufficient to recall the same variants as an iterative recalibration set. However, I recommend rerunning ALL samples with a known set derived with all samples near the end of the project.**
 
-
-## Difference effects on epidemiological interpretations
-
-Since there differences in heterozygous and missed calls using either recalibration option, and idea is to identify which option may be better for subsequent sequencing rounds is to use a set of samples that have been characterized with another sequencing technology. Sanger sequencing should have fewer errors and contain the dominant call. If we assume the lineages identified from Sanger sequencing in the Ribado et al. 2020 samples are conservative, how well does this new procedure group lineages for overlapping samples? 

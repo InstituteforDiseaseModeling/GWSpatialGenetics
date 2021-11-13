@@ -1,45 +1,45 @@
 # Configuration file for nextstrain pipeline
 # specify inputs and options here. 
 
+################################################################################
 # output directory
-outdir: "nextstrain_iqtree"
+output_dir: "/mnt/data/guinea_worm/nextstrain"
+
+################################################################################
+# diploid_vcf: The VCF output of the variant calling pipeline with a ploidy of 2
+# to run the pipleine several vcf files in a single directory, use the diploid_dir option instead
+# expects file naming {BATCH_NAME}_jointGenotypeFiltered.vcf.gz from the processing pipeline
+diploid_vcf: ""
+diploid_dir: "/mnt/data/guinea_worm/nextstrain/original_vcf"
+
+# filtering parameters for excluding samples and sites 
+# max missing parameters are on a proportional scale of 0 to 1
+# heterozygous proportion will be applied to the dominant allele
+vcf_filter:
+  site_max_missing: 0.1
+  samp_max_missing: 0.5
+  genotype_min_read: 5
+  het_proportion: 1
+
+################################################################################
+# meta_file: metadata about each sample
+# TAB DELIMITED file with the same sample names as in the vcf file above, each sample as a single now
+# at minimum requires the following columns (not case senstive):
+# sample, GPS_E, GPS_N, host, year
+metadata: "/mnt/data/guinea_worm/metadata/mtDNA_NGS_Metadata_2021.11.04_orgBC.tsv"
+
+################################################################################
+# Nextstrain object building options
+
+# ref_file: fasta file reference
+reference_file: "/mnt/data/guinea_worm/public_genomesGW/mt/DmedinensisMitochondrionComplete.fasta"
 
 # tree building method
 # chose from iqtree, raxml, fasttree
 tree_method: "iqtree"
 
-# seq_file: The output of the variant calling pipeline, 
-# likely a vcf.gz file with cals for variants in each sample
-# usually named 04_variant_calls_final/jointGenotype_2Iter_filtered.vcf
-seq_file: "04_variant_calls_final/jointGenotype_2Iter_filtered.vcf"
-
-# meta_file: metadata about each sample
-# TAB DELIMITED file with the same sample names as in the vcf file above
-# one row per sample.
-# additional data can be provided as columns, and configured to be displayed
-# on the tree by modifying the auspice_config_file. I've included the following columns by default: 
-# name,strain,host,country,specific_location,date
-meta_file: "nextstrain/nextstrain_metadata.tsv"
-
-# geo_info_file: GPS coordinate definitions for each country and specific_location in the meta_file. 
-# TAB DELIMITED, one location per row, no header
-# columns are location_type, location_name, lat, long
-geo_info_file: "nextstrain/geo_info.tsv"
-
 # auspice_config_file: taken from the github repository, in the same folder as 
 # nextstrain.snakefile. This defines what metadata is presented with the tree,
-auspice_config_file: "/home/internal.idm.ctr/bsiranosian/projects/ben_fork/GWSpatialGenetics/ngs_processing/nextstrain/auspice_config.json"
+auspice_config_file: "auspice_config.json"
 
-# exclude_file: a list of samples that failed sequencing breadth-based quality checks. 
-# automatically outputted from the Rmarkdown script
-# by default, these samples had less than 50% of the genome covered 5x
-# default name: mtDNA_poor_breadth_samples.txt
-exclude_file: "mtDNA_poor_breadth_samples.txt"
 
-# ref_file: fasta file reference
-ref_file: '/home/internal.idm.ctr/bsiranosian/references/d_medinensis_mitochondrion.fasta'
-
-# For clustering defined outside of the nextstrain tree-building algorithm, what 
-# height to cut the hierarchical clustering at. This can be interpreted as the 
-# number of variants to separate the clusters. 
-hclust_height: 45

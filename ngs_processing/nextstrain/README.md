@@ -20,14 +20,12 @@ snakemake -s nextstrain/nextstrain.snakefile --configfile nexstrain/config_nexts
 
 Then, fire up the `auspice` viewer tool with the auspice path in your output directory:
 ```
-auspice view --datasetDir nextstrain_iqtree/auspice/
+auspice view --datasetDir path/to/nextstrain_output/auspice/
 # You may see an error message about "XX is not a valid address."
 # I was able to fix this by appending the following to the command:
-HOST="localhost"; auspice view --datasetDir nextstrain_iqtree/auspice/
+HOST="localhost"; auspice view --datasetDir path/to/nextstrain_output/auspice/
 ```
-Direct your browser to the link provided. The dataset is named 'GW' by default.
+Direct your browser to the link provided. The dataset is given a 'GW' suffix by default.
 
 ### Alternative clustering in Nexstrain
-As an alternative to the tree-building options in Nexstrain, I built a simple clustering method that works directly on the variant call data. This method first decomposes bilallelic sites into respective single-allele variants, then does hierarchical clustering with the ward.D2 method on the manhattan distance between genotype vectors. The output of the clustering will be in the output directory "clustering_figures". You can set a height on the hierarchical clustering to cut the tree and produce a number of discrete clusters, which can be visualized on the nextstrain tree by selecting the "Color By" parameter as "new_cluster" in the web browser. 
-
-If you want to try different clustering cutoffs, simply delete "outdir/clustering_figures/clustering_dendrogram.pdf", change the "hclust_height" parameter in the config, and re-run the Snakemake command. Only the last few rules will need to run, and it will be very quick.
+In progress. 
