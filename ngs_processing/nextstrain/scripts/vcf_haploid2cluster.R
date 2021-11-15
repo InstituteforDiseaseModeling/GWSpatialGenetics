@@ -30,6 +30,7 @@ out_geo  <- snakemake@output[['geo_info']]
 
 # set reusable dataframes
 country_gps <- rbind.data.frame(
+    c("Sudan", 12.8628, 30.2176),
     c("South Sudan", 4.85, 31.6),
     c('Chad', 15.4542, 18.7322),
     c('Niger',	17.6078, 8.0817),
@@ -46,7 +47,9 @@ names(country_gps) <- c("case_gps", "gps_n", "gps_e")
 original_bc_colors <- data.frame(
     category = "original_barcode",
     value = seq(1,11),
-    colors = c(ggsci::pal_futurama("planetexpress")(11)[-c(9)], "#7E6148B2")
+    #colors = c(ggsci::pal_futurama("planetexpress")(11)[-c(9)], "#7E6148B2")
+    colors = c("#FF7F00", "#CD0000", "#008B8B", "#7A378B", "#528B8B",
+     "#FF6347", "#8DEEEE", "#EEA2AD", "#B4EEB4", "#2F4F4F", "#CDAA7D")
 )
 
 cluster_base <- jcolors::jcolors("rainbow")
@@ -117,8 +120,8 @@ clust_colors <- function(meta_simplified){
 
     cluster_colors <- data.frame(
         category = "identical",
-        value = clust_categories,
-        colors = c(colors[1:clust_max], "grey20", "grey40", "grey60")
+        value = c(seq(1, clust_max), "Observed once", "Observed in < 5 samples", "Observed in < 10 samples"),
+        colors = c(colors[1:clust_max], "#999999", "#666666", "#333333")
     ) 
     print(cluster_colors %>% head())
     return(cluster_colors)
@@ -138,6 +141,7 @@ names(metadata) <- tolower(names(metadata))
 
 if("original_barcode" %in% names(metadata)){
     print("Barcode sets with the original protocol provided. ")
+    metadata$original_barcode <- as.numeric(metadata$original_barcode)
 } else{
     print("Barcode sets with the original protocol were not in the metadata file provided. Setting to NA.")
     metadata$original_barcode <- NA
@@ -147,12 +151,13 @@ meta_cluster <- dplyr::inner_join(metadata, vcf_clust) %>%
     left_join(., geo_tag(metadata)) 
 write.table(meta_cluster, file = gsub("_clusters", "_allInfo", out_meta), sep="\t", quote=F, row.names=F) 
 
-meta_simplified <- dplyr::select(meta_cluster, sample, host, year, emergencedate, country, case_gps, original_barcode, id, identical) %>%
+meta_simplified <- dplyr::select(meta_cluster, sample, host, year, sampledate, country, case_gps, original_barcode, id, identical) %>%
     dplyr::mutate(
         strain = sample,
         case_gps = ifelse(is.na(case_gps), country, case_gps), 
-        emergencedate = as.Date(emergencedate, format = "%m/%d/%y")) %>%
-    dplyr::rename(name = sample, date=emergencedate) %>% unique()
+        sampledate = ifelse(sampledate == "", paste0("01/01/",year), sampledate), 
+        sampledate = as.Date(sampledate, format = "%m/%d/%Y")) %>%
+    dplyr::rename(name = sample, date = sampledate) %>% unique()
 write.table(meta_simplified, file = out_meta, sep="\t", quote=F, row.names=F) 
 
 nextidentical_cols <- rbind.data.frame(

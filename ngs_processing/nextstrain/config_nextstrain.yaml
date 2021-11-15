@@ -41,5 +41,6 @@ tree_method: "iqtree"
 # auspice_config_file: taken from the github repository, in the same folder as 
 # nextstrain.snakefile. This defines what metadata is presented with the tree,
 auspice_config_file: "auspice_config.json"
+base_readme: "base_description.md"
 
 

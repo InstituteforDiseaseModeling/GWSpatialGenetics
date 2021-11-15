@@ -21,7 +21,7 @@ options(stringsAsFactors = FALSE)
 
 # load variables from snakemake
 diploid_vcf <- snakemake@input[[1]]
-haploid_vcf <- snakemake@output[[1]]
+haploid_vcf <- snakemake@output[[1]][1]
 samp_missing <- snakemake@params[['samp_missing']]
 site_missing <- snakemake@params[['site_missing']]
 min_gt_depth <- snakemake@params[['min_read_depth']]
@@ -90,17 +90,17 @@ vcf2haploid <- function(vcf){
   
   # organize summary statistics for filtering 
   summary_df <- data.frame(rbind(
-    diploid_vcf_file = diploid_vcf,
-    vcf_n_samples = ncol(het_hap),
-    vcf_n_variants = nrow(het_hap),
-    min_gt_read_depth = min_gt_depth,
-    heterozygous_threshold = paste(1 - proportion, proportion, sep=","),
-    max_site_missing = site_missing,
-    max_samp_missing = samp_missing,
-    haploid_vcf_file = haploid_vcf,
-    filt_n_samples = sum(samp_keep),
-    filt_n_variants = nrow(site_keep_sing),
-    filt_n_variants_singleton_excluded = nrow(site_keep)
+    "Diploid VCF" = basename(diploid_vcf),
+    "Samples" = ncol(het_hap),
+    "Variants" = nrow(het_hap),
+    "Minimun genotype ready depth" = min_gt_depth,
+    "Heterozygous recode proportion" = paste(1 - proportion, proportion, sep=","),
+    "Maximum proportion of samples missing a call" = site_missing,
+    "Maximum proportion of missing sites per sample" = samp_missing,
+    "Haploid VCF" = basename(haploid_vcf),
+    "Samples after filtering" = sum(samp_keep),
+    "Variants after filtering" = nrow(site_keep_sing),
+    "Variants after filtering, singletons excluded" = nrow(site_keep)
   )) %>% tibble::rownames_to_column() 
   names(summary_df) <- c("summary", "value")
   
@@ -113,5 +113,6 @@ vcf2haploid <- function(vcf){
 #######################################################################
 vcf <- vcfR::read.vcfR(diploid_vcf, verbose = FALSE)
 filt_vcf <- vcf2haploid(vcf)
-write.table(filt_vcf$summary, file = gsub("_jointHaploidFilter.vcf.gz", "_filterSummary.tsv", haploid_vcf), sep="\t", row.names = F, quote=F)
+write.table(filt_vcf$summary, file = gsub("_jointHaploidFilter.vcf.gz", "_filterSummary.tsv", haploid_vcf), 
+sep="\t", row.names = F, col.names=F, quote=F)
 vcfR::write.vcf(filt_vcf$vcf, haploid_vcf)

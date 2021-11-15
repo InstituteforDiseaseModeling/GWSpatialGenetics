@@ -51,7 +51,9 @@ rule all:
 rule haploidize_vcf:
     ''' Converts diploid VCF to haploid and filter low quality samples and sites.'''
     input: input_vcf()
-    output: join(OUTPUT_DIR, "filtered_vcf", "{BATCH_NAME}_jointHaploidFilter.vcf.gz") 
+    output: 
+        vcf = join(OUTPUT_DIR, "filtered_vcf", "{BATCH_NAME}_jointHaploidFilter.vcf.gz"),
+        summary = join(OUTPUT_DIR, "filtered_vcf", "{BATCH_NAME}_filterSummary.tsv") 
     params:
         site_missing  = config['vcf_filter']['site_max_missing'],
         samp_missing  = config['vcf_filter']['samp_max_missing'],
@@ -65,7 +67,7 @@ rule update_meta:
     '''Creates new metadata file with clusters and accompanying color schemes for all metadata columns. '''
     input:
         metadata = config['metadata'],
-        haploid_vcf = rules.haploidize_vcf.output
+        haploid_vcf = rules.haploidize_vcf.output.vcf
     output:
         meta_clust = join(OUTPUT_DIR, "{BATCH_NAME}", "metadata_clusters.tsv"),
         meta_color = join(OUTPUT_DIR, "{BATCH_NAME}", "metadata_colors.tsv"),
@@ -74,9 +76,23 @@ rule update_meta:
 
 
 ################################################################################
+rule update_description:
+    '''Updates description file to contain filtering parameters. '''
+    input:
+        readme = config['base_readme'],
+        summary = rules.haploidize_vcf.output.summary
+    output: join(OUTPUT_DIR, "{BATCH_NAME}", "updated_description.md")
+    shell: """
+        temp_file=$(mktemp)
+        tr "\\t" "\\\|" < {input.summary} > temp_file
+        cat {input.readme} temp_file > {output}
+        rm temp_file
+    """    
+
+################################################################################
 rule tree:
     input:
-        aln = rules.haploidize_vcf.output,
+        aln = rules.haploidize_vcf.output.vcf,
         ref = config['reference_file'],
     output:
         aln = join(OUTPUT_DIR, "{BATCH_NAME}", "results", "filtered_recode.vcf.gz"),
@@ -164,7 +180,8 @@ rule export:
         branch_lengths = rules.refine.output.node_data,
         traits = rules.traits.output,
         nt_muts = rules.ancestral.output.nt_data,
-        auspice_config = config["auspice_config_file"]
+        auspice_config = config["auspice_config_file"],
+        description = rules.update_description.output
     output:
         auspice_json = join(OUTPUT_DIR, "auspice", "GW_{BATCH_NAME}.json"),
     shell: """
@@ -172,8 +189,10 @@ rule export:
             --tree {input.tree} \
             --metadata {input.metadata} \
             --colors {input.colors} \
+            --maintainers "Institute for Diease Modeling<www.idmod.org>" \
             --node-data {input.branch_lengths} {input.traits}  {input.nt_muts} \
             --lat-longs {input.geo_info} \
             --auspice-config {input.auspice_config} \
+            --description {input.description} \
             --output {output.auspice_json} \
         """
