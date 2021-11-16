@@ -2,6 +2,7 @@
 # load python modules
 import fnmatch as fn
 import pandas as pd
+import re
 from pandas.io.json import json_normalize
 from os.path import join, splitext, exists, basename, dirname, getsize
 from collections import defaultdict
@@ -180,6 +181,13 @@ def symlink_creation(metadata, symlink_dir):
 
 ################################################################################
 # Functions called throughout joint-batch pipeline
+################################################################################
+def gvcf_list_df(gvcf_dir, output_df) :
+    gvcf_files = glob.glob(join(gvcf_dir, '*.vcf.gz'))
+    gvcf_prefix = [re.split(r'(?<=\w)_[0-9]Iter|.g.vcf', basename(f))[0] for f in gvcf_files]
+    gvcf_df = pd.DataFrame(np.c_[gvcf_prefix, gvcf_files])
+    gvcf_df.to_csv(output_df, index=False, header=False, sep="\t") 
+
 ################################################################################
 def get_gvcf_list():
     if os.path.isfile(VARIANT_FILE):
