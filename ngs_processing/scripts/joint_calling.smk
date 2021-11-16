@@ -9,7 +9,7 @@ Authors - Jessica Ribado and Ben Siranosian
 import sys
 from os.path import exists, join
 
-JOINT_DIR =  join(PROJECT_DIR.rsplit('/', 1)[0], "joint_calling_known") if os.path.isfile(VARIANT_FILE) else join(PROJECT_DIR.rsplit('/', 1)[0], "joint_calling_recal")
+JOINT_DIR =  join(PARENT_DIR, "joint_calling_known") if os.path.isfile(VARIANT_FILE) else join(PARENT_DIR, "joint_calling_recal")
 
 ################################################################################
 checkpoint check_samples:

@@ -58,6 +58,8 @@ You can now run all steps of the pipeline with a single command. This will run e
 
 **Note: For updates that allow for joint calling across batches as a single step, this pipleline assumes all processed batches are placed in a single main directory without additional nesting,** for example `/home/{.?}/guinea_worm/{batch_name}`. The cumulative batch genotype calls will be available in `/home/{.?}/guinea_worm/joint_calls_{recal/known}`.
 
+The script currently assumes that the batch name is the last directory provided in the config file. If the user wishes to to add further nesting to output file, the update must be made in `wgs_functions.smk` on line 21. The user must specify the split structure to capture above, where `FILE_STRUCTURE[0]` would return `/home/{.?}/guinea_worm/{batch_name}` and `FILE_STRUCTURE[1]` would return `{batch_name}`. 
+
 ```
 snakemake -s path/to/git/clone/gw_processing.snakefile --configfile path/to/project/yaml/config_example.yaml --cores 8 --jobs 8 --use-conda
 ```
