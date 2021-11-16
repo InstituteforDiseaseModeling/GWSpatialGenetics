@@ -9,6 +9,8 @@ Authors - Jessica Ribado and Ben Siranosian
 import sys
 from os.path import exists, join
 
+print("The parent directory is", PARENT_DIR)
+print("The batch prefix is ", BATCH_NAME)
 JOINT_DIR =  join(PARENT_DIR, "joint_calling_known") if os.path.isfile(VARIANT_FILE) else join(PARENT_DIR, "joint_calling_recal")
 
 ################################################################################

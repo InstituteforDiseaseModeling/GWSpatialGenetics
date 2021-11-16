@@ -18,7 +18,7 @@ import glob
 PROJECT_DIR = config["output_directory"]
 REF_FILE = config['reference_file']
 VARIANT_FILE = config['variant_calling']['known_variants']
-FILE_STRUCTURE = PROJECT_DIR.rsplit('/', 1)[0]
+FILE_STRUCTURE = PROJECT_DIR.rsplit('/', 1)
 PARENT_DIR = FILE_STRUCTURE[0]
 BATCH_NAME = FILE_STRUCTURE[1]
 MAX_ITER = 0 if os.path.isfile(VARIANT_FILE) else config['max_iter']
