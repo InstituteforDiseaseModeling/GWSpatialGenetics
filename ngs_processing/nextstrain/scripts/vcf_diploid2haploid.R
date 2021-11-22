@@ -93,7 +93,7 @@ vcf2haploid <- function(vcf){
     "Diploid VCF" = basename(diploid_vcf),
     "Samples" = ncol(het_hap),
     "Variants" = nrow(het_hap),
-    "Minimun genotype ready depth" = min_gt_depth,
+    "Minimum genotype ready depth" = min_gt_depth,
     "Heterozygous recode proportion" = paste(1 - proportion, proportion, sep=","),
     "Maximum proportion of samples missing a call" = site_missing,
     "Maximum proportion of missing sites per sample" = samp_missing,

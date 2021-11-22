@@ -61,7 +61,7 @@ You can now run all steps of the pipeline with a single command. This will run e
 The script currently assumes that the batch name is the last directory provided in the config file. If the user wishes to to add further nesting to output file, the update must be made in `wgs_functions.smk` on line 21. The user must specify the split structure to capture above, where `FILE_STRUCTURE[0]` would return `/home/{.?}/guinea_worm/{batch_name}` and `FILE_STRUCTURE[1]` would return `{batch_name}`. 
 
 ```
-snakemake -s path/to/git/clone/gw_processing.snakefile --configfile path/to/project/yaml/config_example.yaml --cores 8 --jobs 8 --use-conda
+snakemake -s path/to/git/clone/gw_processing.snakefile --configfile path/to/project/yaml/config_example.yaml --cores 8 --jobs 8 --use-conda -R check_samples
 ```
 
 Depending on the BQSR options above, this pipeline takes in `.g.vcf.gz` files from each sample in each batch, and combines them into a GATK GenomicsDB Variant filter paramters match hard filtering suggestions from GATK while also removing variants that had mostly missing data (controlled by the "max_missing parameter" in the config). The final unfiltered and filtered calls, with all previous batches, can be found in `joint_calls_{recal/known}/vcf_files/{batch_name}.vcf.gz`.   

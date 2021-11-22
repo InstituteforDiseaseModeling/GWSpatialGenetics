@@ -193,10 +193,8 @@ def gvcf_list_df(gvcf_dir, output_df) :
 ################################################################################
 def get_gvcf_list():
     if os.path.isfile(VARIANT_FILE):
-        # return single_batch(join(PROJECT_DIR, "03_variant_calls", "known_variants", "genomicsDBimport_gvcf_list.txt"))
         return(join(PROJECT_DIR, "03_variant_calls", "known_variants", "genomicsDBimport_gvcf_list.txt"))
     else:    
-        # return single_batch(join(PROJECT_DIR, "03_variant_calls", f"haplocall_{MAX_ITER}", "genomicsDBimport_gvcf_list.txt"))
         return(join(PROJECT_DIR, "03_variant_calls", f"haplocall_{MAX_ITER}", "genomicsDBimport_gvcf_list.txt"))
 
 ################################################################################
@@ -210,6 +208,8 @@ def get_genomicDB_names(name_json):
 def check_sample_names(gvcf_list, db_dir):
     print("Checking names in gvcf list", gvcf_list)
     gvcf_df = pd.read_csv(gvcf_list, sep="\t", names=['sample', 'gvcf_path'])
+    print("First few lines of batch gvcf file:")
+    print(gvcf_df.head())
     
     gvcf_files = glob.glob(join(db_dir, "gvcf_lists", "*_gvcfs.txt"))
     
@@ -254,7 +254,9 @@ def check_sample_names(gvcf_list, db_dir):
 ################################################################################
 def gvcf_list(wildcards):
     checkpoint_output = checkpoints.check_samples.get(**wildcards).output[0]
+    print(checkpoint_output)
     putative_files = os.listdir(dirname(checkpoint_output))
+    print(putative_files)
     if len(putative_files) > 1:
         merged = expand(join(JOINT_DIR, BATCH_NAME, "{merged_sample}.g.vcf.gz"),
                         merged_sample=glob_wildcards(join(dirname(checkpoint_output), "{merged_sample}.txt")).merged_sample)

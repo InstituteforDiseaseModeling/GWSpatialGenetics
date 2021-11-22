@@ -1,7 +1,7 @@
 ### Disclaimer
 
 This tool should be considered a hypothesis generating tool with the following caveats:
-* **2021-11**: Color by identity for the amplicon protocol includes missing positions, inflating the number of unique barcodes found in the population. Other methods for clustering barcodes are under investiagtion.  
+* **2021-11**: Color by identity for the amplicon protocol includes missing positions, inflating the number of unique barcodes found in the population. Other methods for clustering barcodes are under investigation.  
 * **2021-08**: Branch lengths have not been adjusted for estimated GW mutation rates. Do not consider the date on the tree options as an accurate representation of divergence time between samples.
 
 
@@ -11,7 +11,7 @@ This tool should be considered a hypothesis generating tool with the following c
 
 **Amplicon_Protocol**: Barcode identity using the new amplicon protocol targeting 80% of the mitochondrial genome. Currently colored by exact identity of all variant sites after filtering.
 
-**Case_GPS**: The provided coorindated for each worm, when available. Defaults to country GPS coordinates when case coorindates were not provided. Cases with overlapping coorindates will be shown as a pie chart for the user defined coloring option. 
+**Case_GPS**: The provided coordinates for each worm, when available. Defaults to country GPS coordinates when case coordinates were not provided. Cases with overlapping coordinates are shown as a pie chart for the user defined coloring option. 
 
 
 ### VCF Information

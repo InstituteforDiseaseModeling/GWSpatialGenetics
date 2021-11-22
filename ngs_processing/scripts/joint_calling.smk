@@ -9,8 +9,7 @@ Authors - Jessica Ribado and Ben Siranosian
 import sys
 from os.path import exists, join
 
-print("The parent directory is", PARENT_DIR)
-print("The batch prefix is ", BATCH_NAME)
+
 JOINT_DIR =  join(PARENT_DIR, "joint_calling_known") if os.path.isfile(VARIANT_FILE) else join(PARENT_DIR, "joint_calling_recal")
 
 ################################################################################
@@ -24,7 +23,8 @@ checkpoint check_samples:
 ################################################################################
 rule merge_batch_bams:
     ''' Merges aligned deduplicated reads for each replicate. '''
-    input:  join(JOINT_DIR, BATCH_NAME, "{merged_sample}.txt") 
+    input:  
+        merged_name = join(JOINT_DIR, BATCH_NAME, "{merged_sample}.txt") 
     output: 
         bam = join(JOINT_DIR, BATCH_NAME, "{merged_sample}.bam"),
         bai = join(JOINT_DIR, BATCH_NAME, "{merged_sample}.bam.bai")
@@ -54,7 +54,7 @@ rule merge_call_haplotypes:
     """
 
 ################################################################################
-rule  update_gvcf_list:
+rule update_gvcf_list:
     input:  gvcf_list
     output: join(JOINT_DIR, "gvcf_lists", f"{BATCH_NAME}_genomicDB_gvcfs.txt")
     run:
