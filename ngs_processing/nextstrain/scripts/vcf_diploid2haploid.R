@@ -90,17 +90,17 @@ vcf2haploid <- function(vcf){
   
   # organize summary statistics for filtering 
   summary_df <- data.frame(rbind(
-    "Diploid VCF" = basename(diploid_vcf),
-    "Samples" = ncol(het_hap),
-    "Variants" = nrow(het_hap),
-    "Minimum genotype ready depth" = min_gt_depth,
-    "Heterozygous recode proportion" = paste(1 - proportion, proportion, sep=","),
-    "Maximum proportion of samples missing a call" = site_missing,
-    "Maximum proportion of missing sites per sample" = samp_missing,
+    "Diploid VCF  " = basename(diploid_vcf),
+    "Samples  " = ncol(het_hap),
+    "Variants " = nrow(het_hap),
+    "Minimum genotype ready depth " = min_gt_depth,
+    "Heterozygous recode proportion " = paste(1 - proportion, proportion, sep=","),
+    "Maximum proportion of samples missing a call " = site_missing,
+    "Maximum proportion of missing sites per sample " = samp_missing,
     "Haploid VCF" = basename(haploid_vcf),
-    "Samples after filtering" = sum(samp_keep),
-    "Variants after filtering" = nrow(site_keep_sing),
-    "Variants after filtering, singletons excluded" = nrow(site_keep)
+    "Samples after filtering  " = sum(samp_keep),
+    "Variants after filtering " = nrow(site_keep_sing),
+    "Variants after filtering, singletons excluded  " = nrow(site_keep)
   )) %>% tibble::rownames_to_column() 
   names(summary_df) <- c("summary", "value")
   

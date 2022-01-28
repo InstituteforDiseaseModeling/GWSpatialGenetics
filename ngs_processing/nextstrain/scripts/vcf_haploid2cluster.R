@@ -9,7 +9,7 @@
 # set-up
 #######################################################################
 for(p in c('vcfR', 'data.table', 'dplyr', 'tidyr', 
-            'ggsci', 'ggthemes', 'jcolors', 'shades')){
+            'ggsci', 'ggthemes', 'shades', 'paletteer')){
   if(!p %in% installed.packages()[,1]){
     install.packages(p, repos =  "https://cloud.r-project.org", dependencies = T )
     library(p, character.only = TRUE)
@@ -21,6 +21,7 @@ for(p in c('vcfR', 'data.table', 'dplyr', 'tidyr',
 options(datatable.fread.datatable=FALSE)
 options(stringsAsFactors = FALSE)
 
+################################################################################
 # load variables from snakemake
 metadata <- snakemake@input[['metadata']]
 hap_vcf  <- snakemake@input[['haploid_vcf']]
@@ -28,6 +29,7 @@ out_meta <- snakemake@output[['meta_clust']]
 out_cols <- snakemake@output[['meta_color']]
 out_geo  <- snakemake@output[['geo_info']]
 
+################################################################################
 # set reusable dataframes
 country_gps <- rbind.data.frame(
     c("Sudan", 12.8628, 30.2176),
@@ -43,16 +45,26 @@ country_gps <- rbind.data.frame(
     c('Cameroon', 12.3547, 7.3697)) 
 names(country_gps) <- c("case_gps", "gps_n", "gps_e")
 
+
+################################################################################
 # set colors 
-original_bc_colors <- data.frame(
+gene_base <- data.frame(
     category = "original_barcode",
     value = seq(1,11),
-    #colors = c(ggsci::pal_futurama("planetexpress")(11)[-c(9)], "#7E6148B2")
     colors = c("#FF7F00", "#CD0000", "#008B8B", "#7A378B", "#528B8B",
      "#FF6347", "#8DEEEE", "#EEA2AD", "#B4EEB4", "#2F4F4F", "#CDAA7D")
 )
 
-cluster_base <- jcolors::jcolors("rainbow")
+amplicon_base <- c("#D12600", "#DB6A00", "#B2FF2E", "#00AD00", "#9CCADE", 
+                  "#005B94", "#1E2085", "#610052", "#953272")
+kinship_base <- c("#C62828", "#F44336", "#9C27B0", "#673AB7", "#3F51B5", 
+    "#2196F3", "#006064", "#009688", "#4CAF50", "#8BC34A", "#FFEB3B", 
+    "#FF9800", "#795548")
+progeny_base <- c("#CC3D24", "#F3C558", "#6DAE90", "#30B4CC", "#004F7A")
+reduced_base <- setNames(c("#D9C6B8", "#C2B0A3", "#836F65"), 
+                         c("Observed once", "Observed in < 5 samples", "Observed in < 10 samples")) 
+unaffil_base <- c("#96725B", "#7D4C29", "#613922", "#000000")
+
 
 #######################################################################
 # functions
@@ -71,10 +83,10 @@ gt2barcode <- function(vcf){
                   frequency = n()) %>%
     dplyr::arrange(desc(frequency), group) %>% ungroup() %>%          
     dplyr::mutate(
-        id = group %>% grpid,
-        identical = ifelse(frequency == 1, "Observed once",
+        amplicon_barcode = group %>% grpid,
+        amplicon = ifelse(frequency == 1, "Observed once",
             ifelse(frequency < 5, "Observed in < 5 samples",
-                ifelse(frequency < 10, "Observed in < 10 samples", id))))
+                ifelse(frequency < 10, "Observed in < 10 samples", amplicon_barcode))))
 
     return(sequences)
 }
@@ -106,27 +118,28 @@ geo_tsv <- function(gps_coords, output_file){
     write.table(total_gps, file = output_file, quote = F, row.names = F, col.names = F, sep="\t")     
 }
 
-clust_colors <- function(meta_simplified){
-    clust_categories <- unique(meta_simplified$identical)
-    clust_max <- max(as.numeric(clust_categories), na.rm=T)
+nextstrain_colors <- function(df, column, base_colors){
+  # double the number of available colors
+  expanded_colors <- c(base_colors, saturation(paste0(base_colors, "FF"), scalefac(0.5)))
+  
+  col_entries <- dplyr::pull(df, column)
+  ungrouped  <- sort(unique(col_entries[grepl("unaffiliated", col_entries)]))
+  grouped <- names(sort(table(col_entries[!grepl("unaffiliated|Observed", col_entries)]), decreasing=T))
+  if(length(ungrouped) > 0){
+    merged_group <- c(setNames(expanded_colors[1:length(grouped)], grouped), 
+                      setNames(unaffil_base[1:length(ungrouped)], ungrouped))
+  }else{
+    merged_group <- setNames(expanded_colors[1:length(grouped)], grouped)
+  }
 
-    if(clust_max <= length(cluster_base)){
-        colors <- cluster_base
-    } else if(clust_max <= length(cluster_base)*2){
-        colors <- c(cluster_base, as.vector(saturation(cluster_base, 0.5)))
-    } else{
-        exit(paste0("Too many colors (>",  length(cluster_base)*2, ") for automatic coloring, requires manual color palette updates. Exiting."))
-    }
-
-    cluster_colors <- data.frame(
-        category = "identical",
-        value = c(seq(1, clust_max), "Observed once", "Observed in < 5 samples", "Observed in < 10 samples"),
-        colors = c(colors[1:clust_max], "#999999", "#666666", "#333333")
-    ) 
-    print(cluster_colors %>% head())
-    return(cluster_colors)
-} 
-
+  colors <- cbind(category = column,
+    data.frame(colors = c(merged_group,
+    reduced_base[names(reduced_base) %in% unique(col_entries)])) %>%
+    tibble::rownames_to_column("value"))
+  return(colors)
+}
+  
+  
 #######################################################################
 # run
 #######################################################################
@@ -139,29 +152,78 @@ print(metadata)
 metadata <- read.delim(metadata, sep="\t") 
 names(metadata) <- tolower(names(metadata))
 
+
 if("original_barcode" %in% names(metadata)){
     print("Barcode sets with the original protocol provided. ")
-    metadata$original_barcode <- as.numeric(metadata$original_barcode)
-} else{
-    print("Barcode sets with the original protocol were not in the metadata file provided. Setting to NA.")
-    metadata$original_barcode <- NA
+    metadata <- dplyr::mutate(metadata, 
+      original_barcode = as.numeric(metadata$original_barcode),
+      original_protocol = ifelse(!is.na(original_barcode), "Sequenced", "Not sequenced"))
+    ns_colors <- dplyr::filter(gene_base, value %in% metadata$original_barcode)
+} 
+
+# check the number of samples per group to assign new colors for grouping, if needed
+min_samples = 5
+if("kinship_group" %in% names(metadata)){
+  print("Kinship groups are provided.")
+  if (length(unique(na.omit(metadata$kinship_group))) > length(kinship_base)*2){
+    print(" More kinships than available colors. Assigning kinship groups found in less than 5 samples to a single color. ")
+    metadata <- dplyr::group_by(metadata, kinship_group) %>%
+      dplyr::mutate(kinship_frequency = n(),
+                    kinship = ifelse(kinship_frequency < min_samples | grepl("unaffliated", kinship_group), paste("Observed in <", min_samples, "samples"), kinship_group))
+    if(length(unique(na.omit(metadata$kinship))) >  length(kinship_base)*2){
+      exit(paste0("Too many colors (>",  length(kinship_base)*2, ") for automatic coloring, requires manual color palette updates. Exiting."))
+    }
+  } else {
+    metadata <- dplyr::group_by(metadata, kinship_group) %>%
+      dplyr::mutate(kinship_frequency = n(),
+                    kinship = kinship_group)
+  }
+  kinship_colors <- nextstrain_colors(metadata, "kinship", kinship_base)
+  if(exists("ns_colors")){
+    ns_colors <- rbind(ns_colors, kinship_colors)
+  } else{
+    ns_colors <- kinship_groups
+  }
+  
+  if (length(unique(na.omit(metadata$progeny_group))) > length(progeny_base)*2){
+    print("More parent offspring pairs than available colors.
+          Assigning pairs with less than 5 samples per family to a single color. ")
+    metadata <- dplyr::group_by(metadata, progeny_group) %>%
+      dplyr::mutate(progeny_frequency = n(),
+                    progeny = ifelse(progeny_frequency < min_samples, paste("Observed in <", min_samples, "samples"), progeny_group)) 
+  } else{
+    metadata <- dplyr::group_by(metadata, progeny_group) %>%
+      dplyr::mutate(progeny_frequency = n(),
+                    progeny = progeny_group)
+  }
+  ns_colors <- rbind(ns_colors, nextstrain_colors(metadata, "progeny", progeny_base))
+  metadata <- metadata %>% ungroup()
+  metadata$microsatellite_protocol <- ifelse(!is.na(metadata$kinship_group), "Sequenced", "Not sequenced")
 }
+
 
 meta_cluster <- dplyr::inner_join(metadata, vcf_clust) %>%
     left_join(., geo_tag(metadata)) 
 write.table(meta_cluster, file = gsub("_clusters", "_allInfo", out_meta), sep="\t", quote=F, row.names=F) 
 
-meta_simplified <- dplyr::select(meta_cluster, sample, host, year, sampledate, country, case_gps, original_barcode, id, identical) %>%
+ideal_columns <- c("sample", "host", "year", "sampledate", "country", "case_gps",
+                  "original_barcode", "amplicon_barcode", "amplicon", 
+                  "kinship_group", "kinship", "progeny_group", "progeny", 
+                  "original_protocol", "microsatellite_protocol")
+filt_columns <- names(meta_cluster)[names(meta_cluster) %in% ideal_columns]
+
+meta_simplified <- dplyr::select(meta_cluster, all_of(filt_columns)) %>%
     dplyr::mutate(
         strain = sample,
         case_gps = ifelse(is.na(case_gps), country, case_gps), 
+        year = as.numeric(year),
         sampledate = ifelse(sampledate == "", paste0("01/01/",year), sampledate), 
         sampledate = as.Date(sampledate, format = "%m/%d/%Y")) %>%
     dplyr::rename(name = sample, date = sampledate) %>% unique()
 write.table(meta_simplified, file = out_meta, sep="\t", quote=F, row.names=F) 
 
 nextidentical_cols <- rbind.data.frame(
-    original_bc_colors, 
-    clust_colors(meta_simplified)
+  nextstrain_colors(meta_simplified, "amplicon", amplicon_base),
+  ns_colors
 ) 
 write.table(nextidentical_cols, file = out_cols, sep="\t", row.names=F, col.names=F, quote=F)

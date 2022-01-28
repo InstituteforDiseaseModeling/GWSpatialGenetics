@@ -1,19 +1,9 @@
 {
- "title": "General GW Metadata",
+ "title": "Guinea worm Nextstrain",
  "maintainers": [
    {"name": "Institute for Disease Modeling"}
  ],
  "colorings": [
-  {
-    "key": "country",
-    "title": "Country",
-    "type": "categorical"
-  },
-  {
-    "key": "case_gps",
-    "title": "Case_GPS",
-    "type": "categorical"
-  },
   {
     "key": "year",
     "title": "Sampled_Year",
@@ -30,8 +20,18 @@
    "type": "categorical"
   },
   {
-    "key": "identical",
+    "key": "amplicon",
     "title": "Amplicon_Protocol",
+    "type": "categorical"
+  },
+  {
+    "key": "kinship",
+    "title": "Yearly_Sibship",
+    "type": "categorical"
+  },
+  {
+    "key": "progeny",
+    "title": "ParentalOffspring_Pairs",
     "type": "categorical"
   }
  ],
@@ -43,7 +43,11 @@
   "country",
   "year",
   "original_barcode",
-  "identical"
+  "amplicon",
+  "kinship_group",
+  "progeny_group",
+  "original_protocol",
+  "microsatellite_protocol"
  ]
 }
 
