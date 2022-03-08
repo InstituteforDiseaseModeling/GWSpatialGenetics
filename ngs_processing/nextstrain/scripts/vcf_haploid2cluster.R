@@ -59,7 +59,7 @@ amplicon_base <- c("#D12600", "#DB6A00", "#B2FF2E", "#00AD00", "#9CCADE",
                   "#005B94", "#1E2085", "#610052", "#953272")
 kinship_base <- c("#C62828", "#F44336", "#9C27B0", "#673AB7", "#3F51B5", 
     "#2196F3", "#006064", "#009688", "#4CAF50", "#8BC34A", "#FFEB3B", 
-    "#FF9800", "#795548")
+    "#FF9800", "#FFFFFF")
 progeny_base <- c("#CC3D24", "#F3C558", "#6DAE90", "#30B4CC", "#004F7A")
 reduced_base <- setNames(c("#D9C6B8", "#C2B0A3", "#836F65"), 
                          c("Observed once", "Observed in < 5 samples", "Observed in < 10 samples")) 
@@ -185,18 +185,20 @@ if("kinship_group" %in% names(metadata)){
     ns_colors <- kinship_groups
   }
   
-  if (length(unique(na.omit(metadata$progeny_group))) > length(progeny_base)*2){
-    print("More parent offspring pairs than available colors.
-          Assigning pairs with less than 5 samples per family to a single color. ")
-    metadata <- dplyr::group_by(metadata, progeny_group) %>%
-      dplyr::mutate(progeny_frequency = n(),
-                    progeny = ifelse(progeny_frequency < min_samples, paste("Observed in <", min_samples, "samples"), progeny_group)) 
-  } else{
-    metadata <- dplyr::group_by(metadata, progeny_group) %>%
-      dplyr::mutate(progeny_frequency = n(),
-                    progeny = progeny_group)
-  }
-  ns_colors <- rbind(ns_colors, nextstrain_colors(metadata, "progeny", progeny_base))
+  if("progeny_group" %in% names(metadata)){
+    if (length(unique(na.omit(metadata$progeny_group))) > length(progeny_base)*2){
+      print("More parent offspring pairs than available colors.
+            Assigning pairs with less than 5 samples per family to a single color. ")
+      metadata <- dplyr::group_by(metadata, progeny_group) %>%
+        dplyr::mutate(progeny_frequency = n(),
+                      progeny = ifelse(progeny_frequency < min_samples, paste("Observed in <", min_samples, "samples"), progeny_group)) 
+    } else{
+      metadata <- dplyr::group_by(metadata, progeny_group) %>%
+        dplyr::mutate(progeny_frequency = n(),
+                      progeny = progeny_group)
+    }
+    ns_colors <- rbind(ns_colors, nextstrain_colors(metadata, "progeny", progeny_base))
+  }  
   metadata <- metadata %>% ungroup()
   metadata$microsatellite_protocol <- ifelse(!is.na(metadata$kinship_group), "Sequenced", "Not sequenced")
 }

@@ -2,7 +2,7 @@
 
 This tool should be considered a hypothesis generating tool with the following caveats:
 * **2021-11**: Color by identity for the amplicon protocol includes missing positions, inflating the number of unique barcodes found in the population. Other methods for clustering barcodes are under investigation.  
-* **2021-08**: Branch lengths have not been adjusted for estimated GW mutation rates. Do not consider the date on the tree options as an accurate representation of divergence time between samples.
+* **2021-08**: Branch lengths have not been adjusted for estimated GW mutation rates. Do not consider the date on the tree options as an accurate representation of divergence time between samples. Use the `Sampled_Year` option for the correct case year per sample. 
 
 
 ### Coloring options
@@ -11,9 +11,11 @@ This tool should be considered a hypothesis generating tool with the following c
 
 **Amplicon_Protocol**: Barcode identity using the new amplicon protocol targeting 80% of the mitochondrial genome. Currently colored by exact identity of all variant sites after filtering.
 
-**Yearly_Sibship**: Sibship inference per year determined with Colony (v2.0.6.7). Genotypes for each sample were coded as present/absent haplotypes at 130 nuclear microsatellite loci. Samples included in this category met allele-calling parameters for >= 70% of 130 microsatellite loci.
+**Yearly_Sibship**: One hundred and thirty nuclear microsatellite sites were tested for informativeness. Analyses with 10 different sets of randomly chosen loci indicated that the presence/absence of some loci influenced the pedigree assignment of some groups. Kinship analysis was repeated after assessing the Polymorphism Information Content (PIC) of each locus using the method of Botstein et al. (1980).
+Results in the current analysis were obtained using loci with a PIC >= 0.5, which was considered by Botstein et al. (1980) to be the minimum value for a highly informative marker (i.e.,
+a marker with high discriminatory capacity). Sibship inference per year determined with Colony (v2.0.6.7). Genotypes for each sample were coded as present/absent haplotypes at loci with PIC >= 0.5. Loci included in this analysis are a subset of the loci that provided successful allele calls in >= 75% of the 384-sample trial run. Samples included in this category met allele-calling parameters for >= 70% of 130 microsatellite loci. Individuals were assigned to a a cluster if ML probability of inclusion >= 0.90. 
 
-**ParentalOffspring_Pairs**: Parentage inference determined with Colony (v2.0.6.7). See `Yearly_Sibship` for more details on processing.  
+**ParentalOffspring_Pairs** (Optional): Parentage inference determined with Colony (v2.0.6.7). See `Yearly_Sibship` for more details on processing.  
 
 **Case_GPS**: The provided coordinates for each worm, when available. Samples were given country GPS coordinates when case coordinates were unavailable. Cases with overlapping coordinates are shown as a pie chart for the user defined coloring option. 
 

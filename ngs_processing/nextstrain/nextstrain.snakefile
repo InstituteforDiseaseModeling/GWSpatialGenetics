@@ -1,8 +1,8 @@
 #######################################################################
 # Nextstrain pipeline for GW NGS data
-# desigend to take in the input of the ngs variant calling pipeline
+# Designed to take in the input of the ngs variant calling pipeline
 # and output a json file that can be visualized with nextstrain
-# This is mostly just the default nextstrain pipeline, similar to 
+# This is mostly just the default Nextstrain pipeline, similar to 
 #   https://docs.nextstrain.org/en/latest/tutorials/tb_tutorial.html
 #   With some modifications and many simplifications. 
 #   Many rules, such as translating to amino acid mutations and 
