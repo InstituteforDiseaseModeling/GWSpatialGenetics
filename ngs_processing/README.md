@@ -42,14 +42,14 @@ conda env create -f ngs_align.yaml
 All settings for the pipeline live in the "configfile," an example is provided at `configGW_mtAll.yaml`. Edit this file to change the output directory and other settings. All sequencing file inputs depend on the metadata file specified; look at `metadata_example.tsv` for a template. 
 
 #### Create metadata files (optional)
-A customizable script has been included to generate a metadata file from a directory path and sample key file. The script handles naming schemes for the Cornell and Qiagen sequencing centers. The sample file for Qiagen must contain a minimum of `sample_number` and `sample` tab delimited columns for matching. If no sample file is provided, the script will rename samples `[s1...sN]` up to the number of samples in the directory. 
+A customizable script has been included to generate a metadata file from a directory path and sample key file. The script handles naming schemes for the Cornell and Qiagen sequencing centers. The sample file for Qiagen must contain a minimum of `sample_number` and `sample` comma separated columns for matching. If no sample file is provided, the script will rename samples `[s1...sN]` up to the number of samples in the directory. 
 
 Note: Relevant sample information is in the Cornell name, sample key file is not required. 
 
 ```
-snakemake -s /path/to/git/clone/scripts/generate_manifest.smk --config fastq_dir='/path/to/raw_reads_dir' output_file='/path/to/metadata.tsv' sample_key='/path/to/sample_key.txt'
+snakemake -s /path/to/git/clone/scripts/generate_manifest.smk --config fastq_dir='/path/to/raw_reads_dir' output_file='/path/to/metadata.tsv' sample_key='/path/to/sample_key.csv'
 ```
-If not providing a sample key, leave the option in the command line or provide a dummy file. If the sample key file does not exist, it will default to the `[s1...sN]` naming scheme.
+If not providing a sample key, leave the option in the command line or provide a dummy file. If the sample key file does not exist, it will default to the `[s1...sN]` naming scheme. This naming scheme is beneficial to run a single round, but is not recommended as it will merge different, unrelated samples together in the joint calling round. 
 
 
 ## Run the pipeline 
