@@ -152,7 +152,6 @@ print(metadata)
 metadata <- read.delim(metadata, sep="\t") 
 names(metadata) <- tolower(names(metadata))
 
-
 if("original_barcode" %in% names(metadata)){
     print("Barcode sets with the original protocol provided. ")
     metadata <- dplyr::mutate(metadata, 
@@ -201,8 +200,7 @@ if("kinship_group" %in% names(metadata)){
   }  
   metadata <- metadata %>% ungroup()
   metadata$microsatellite_protocol <- ifelse(!is.na(metadata$kinship_group), "Sequenced", "Not sequenced")
-}
-
+} 
 
 meta_cluster <- dplyr::inner_join(metadata, vcf_clust) %>%
     left_join(., geo_tag(metadata)) 
@@ -224,8 +222,10 @@ meta_simplified <- dplyr::select(meta_cluster, all_of(filt_columns)) %>%
     dplyr::rename(name = sample, date = sampledate) %>% unique()
 write.table(meta_simplified, file = out_meta, sep="\t", quote=F, row.names=F) 
 
-nextidentical_cols <- rbind.data.frame(
-  nextstrain_colors(meta_simplified, "amplicon", amplicon_base),
-  ns_colors
-) 
+nextidentical_cols <- nextstrain_colors(meta_simplified, "amplicon", amplicon_base)
+# check if other genotype categories need to be included in the output file
+if(exists("ns_colors")){
+  nextidentical_cols <- rbind.data.frame(nextidentical_cols, ns_colors) 
+} 
+
 write.table(nextidentical_cols, file = out_cols, sep="\t", row.names=F, col.names=F, quote=F)
