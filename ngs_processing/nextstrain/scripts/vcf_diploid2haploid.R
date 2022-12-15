@@ -30,6 +30,15 @@ proportion  <- snakemake@params[['het_threshold']]
 #######################################################################
 # functions
 #######################################################################
+filter_batch_duplicates <- function(samples){
+  # return duplicates of files between batches for filtering 
+  duplicated_samples <- c(gsub(".batch.*", "",  
+    samples[grepl("\\.batch", samples)]),
+    samples[grepl("MISC|BAT", samples)])
+  return(duplicated_samples)  
+}
+
+
 vcf2haploid <- function(vcf){ 
   #  vcf <- vcfR::read.vcfR(vcf_files[[1]], verbose = FALSE)
   tmp_vcf <- vcf
@@ -68,12 +77,26 @@ vcf2haploid <- function(vcf){
   is.na(gt_merge[gt_merge == "NA:NA"]) <- TRUE
   tmp_vcf@gt[,-1] <- gt_merge
   
-  # apply filter
-  # filter samples with low read depth 
-  samp_keep <- (colSums(is.na(het_hap_adj))/nrow(het_hap_adj) < samp_missing) & 
-    sapply(names(het_hap_adj), function(y) !grepl(y, "BAT"))
+  # sample filters
+  # identify duplicate samples 
+  dup_samples <- filter_batch_duplicates(names(het_hap_adj))
+  # check for duplicates that show up more than once
+  dup_removal <- names(table(dup_samples))[table(dup_samples) <= 1]
+  double_dups <- names(table(dup_samples))[table(dup_samples) > 1]
+  if (length(double_dups) > 0){
+    for (duplicate in double_dups){
+      duplicates <- names(het_hap_adj)[grepl(duplicate, names(het_hap_adj))]
+      dup_counts <-colSums(is.na(het_hap_adj[,duplicates]))
+      dup_removal <- c(dup_removal, names(dup_counts)[dup_counts < max(dup_counts)])
+    }
+  }
+  duplicated_keep <- !names(het_hap_adj) %in% dup_removal
+
+  # identify samples with a high proportion of positions not meeting minimum read depth  
+  depth_keep <- colSums(is.na(het_hap_adj))/nrow(het_hap_adj) < samp_missing
+  samp_keep <- duplicated_keep & depth_keep
   het_samp_rm <- het_hap_adj[, samp_keep]
-  
+
   # filter out sites with a majority proportion of missing reads
   gt_counts <- cbind.data.frame(
      ref =  rowSums(het_samp_rm == "0", na.rm=T),
@@ -85,9 +108,11 @@ vcf2haploid <- function(vcf){
   site_keep <- dplyr::filter(gt_counts, alt > 1 & ref > 1 & missing < site_missing * ncol(het_hap_adj))
   
   tmp_vcf@gt <- tmp_vcf@gt[, c(TRUE, samp_keep)]
+  # remove batch information for duplicated samples
+  colnames(tmp_vcf@gt) <- gsub("-batch.*" , "", colnames(tmp_vcf@gt))
+  colnames(tmp_vcf@gt) <- gsub("-" , ".", colnames(tmp_vcf@gt))
   tmp_vcf <- tmp_vcf[rownames(het_hap_adj) %in% row.names(site_keep), ]
 
-  
   # organize summary statistics for filtering 
   summary_df <- data.frame(rbind(
     "Diploid VCF  " = basename(diploid_vcf),
@@ -106,6 +131,7 @@ vcf2haploid <- function(vcf){
   
   return(list(summary = summary_df,
               vcf = tmp_vcf))
+
 }  
 
 #######################################################################
@@ -113,6 +139,5 @@ vcf2haploid <- function(vcf){
 #######################################################################
 vcf <- vcfR::read.vcfR(diploid_vcf, verbose = FALSE)
 filt_vcf <- vcf2haploid(vcf)
-write.table(filt_vcf$summary, file = gsub("_jointHaploidFilter.vcf.gz", "_filterSummary.tsv", haploid_vcf), 
-sep="\t", row.names = F, col.names=F, quote=F)
+write.table(filt_vcf$summary, file = gsub("_jointHaploidFilter.vcf.gz", "_filterSummary.tsv", haploid_vcf), sep="\t", row.names = F, col.names=F, quote=F)
 vcfR::write.vcf(filt_vcf$vcf, haploid_vcf)
