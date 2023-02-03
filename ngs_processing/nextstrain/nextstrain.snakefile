@@ -15,6 +15,7 @@
 import sys
 from os.path import join, splitext, isfile
 from glob import glob
+from os.path import basename
 
 # define functions
 def input_vcf():
@@ -44,7 +45,7 @@ if config['tree_method'] not in ["iqtree", "raxml", "fasttree"]:
 ################################################################################
 rule all:
     input:
-        expand(join(OUTPUT_DIR, "auspice", "GW_{BATCH_NAME}.json"), BATCH_NAME=BATCH_NAME[1])
+        expand(join(OUTPUT_DIR, "auspice", "GW_{BATCH_NAME}.json"), BATCH_NAME=BATCH_NAME)
 
 
 ################################################################################

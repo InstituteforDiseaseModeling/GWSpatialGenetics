@@ -42,9 +42,35 @@ country_gps <- rbind.data.frame(
     c('Ghana', 7.9465, -1.0232),
     c('Ethiopia',  9.145, 40.4897),
     c('Angola', -11.2027, 17.8739),
-    c('Cameroon', 12.3547, 7.3697)) 
+    c('Cameroon', 12.3547, 7.3697),
+    c("Central African Republic", 6.6194, 20.9367)) 
 names(country_gps) <- c("case_gps", "gps_n", "gps_e")
 
+country_codes <- rbind.data.frame(
+  c("Sudan", "SUD"),
+  c("South Sudan", "SSU"),
+  c('Chad', "CHD"),
+  c('Niger',	"NGR"),
+  c('Mali',  "MAL"),
+  c('Burkina Faso', "BFA"),
+  c("Cote d'Ivoire", "CDI"),
+  c('Ghana', "GHA"),
+  c('Ethiopia',  "ETH"),
+  c('Angola', "ANG"),
+  c('Cameroon', "CAM"),
+  c("Central African Republic", "RCA")) 
+names(country_codes) <- c("country", "country_code")
+
+host_codes <- rbind.data.frame(
+  c("Dog", "DOG"),
+  c("Human", "HUM"),
+  c("Cat, domestic", "CAT"),
+  c("Cat, Panthera pardus", "PPD"),
+  c("Cat, wild unknown spp.", "WCT"),
+  c("Baboon", "BAB"),
+  c("Unknown animal", "Unidentified")
+)
+names(host_codes) <- c("host", "host_code")
 
 ################################################################################
 # set colors 
@@ -120,7 +146,9 @@ geo_tsv <- function(gps_coords, output_file){
 
 nextstrain_colors <- function(df, column, base_colors){
   # double the number of available colors
-  expanded_colors <- c(base_colors, saturation(paste0(base_colors, "FF"), scalefac(0.5)))
+  expanded_colors <- c(base_colors, 
+                       saturation(paste0(base_colors, "FF"), scalefac(0.5)),
+                       saturation(paste0(base_colors, "FF"), scalefac(0.25)))
   
   col_entries <- dplyr::pull(df, column)
   ungrouped  <- sort(unique(col_entries[grepl("unaffiliated", col_entries)]))
@@ -148,9 +176,44 @@ vcf <- vcfR::read.vcfR(hap_vcf, verbose = FALSE)
 vcf_clust <- gt2barcode(vcf)
 
 # add to metadata
-print(metadata)
-metadata <- read.delim(metadata, sep="\t") 
+metadata <- read.delim(metadata, sep="\t") %>%
+  dplyr::mutate(vassar_worm = gsub(".*_", "", Genomics.Sample.ID)) %>%
+  dplyr::rename("SampleDate"="Sample.date")
 names(metadata) <- tolower(names(metadata))
+metadata[metadata == "." & !is.na(metadata)] <- NA
+
+# check that metadata exists for all files in the VCF
+vcf_samples <- colnames(vcf@gt)[-1]
+vcf_numbers <- cbind.data.frame(
+  sample = vcf_samples,
+  vassar_worm = gsub(".*_", "", vcf_samples))
+# merge back with metadata
+metadata <- dplyr::left_join(metadata, vcf_numbers)
+
+yes_meta <- dplyr::filter(metadata, vassar_worm %in% vcf_numbers$vassar_worm)
+missing_meta <- vcf_samples[!vcf_samples %in% yes_meta$sample]
+if (length(missing_meta) > 0){
+  name_suffix <- gsub("_.*", "", missing_meta)
+  fill_missing <- bind_cols(
+    sample = missing_meta,
+    country_code = substr(name_suffix, 1, 3),
+    host_code = sapply(name_suffix, function(i) ifelse(nchar(i) < 10, "Unidentified", substr(i, 4, 6))),
+    year = as.numeric(gsub("[[:alpha:]]", "", name_suffix))
+  )
+  
+  fill_missing <- dplyr::inner_join(fill_missing, country_codes) %>%
+    dplyr::inner_join(., host_codes) %>%
+    dplyr::select(-host_code, -country_code)
+  metadata <- dplyr::bind_rows(fill_missing, yes_meta) %>%
+    dplyr::filter(sample %in% vcf_samples)
+  #print(head(metadata))
+  if(nrow(metadata) != length(vcf_samples)){
+    print(paste("Metadata available for", nrow(metadata), "samples."))
+    print(paste("VCF files contains", length(vcf_samples), "samples prior to filtering."))
+    #stop("The metadata columns do not match the number of samples in the VCF after parsing names. Please check input names.")
+  }
+}
+
 
 if("original_barcode" %in% names(metadata)){
     print("Barcode sets with the original protocol provided. ")
