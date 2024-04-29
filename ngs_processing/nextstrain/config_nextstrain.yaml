@@ -1,36 +1,39 @@
 # Configuration file for nextstrain pipeline
 # specify inputs and options here. 
+# Note: to create a haploid VCF from the joint variant calling pipeline, run the set-up portion of the analyses manifest scripts file. 
+# The analyses manifest file creates the haploid VCF, filter summary file, and the barcode groupings required to run this pipeline
 
 ################################################################################
+# Project directory for all analyses. Assumes that each sequencing batch 
+project_dir: "/mnt/data/guinea_worm/analyses/test"
+
 # output directory
 output_dir: "/mnt/data/guinea_worm/nextstrain"
 
 ################################################################################
-# diploid_vcf: The VCF output of the variant calling pipeline with a ploidy of 2
-# to run the pipleine several vcf files in a single directory, use the diploid_dir option instead
-# expects file naming {BATCH_NAME}_jointGenotypeFiltered.vcf.gz from the processing pipeline
-diploid_vcf: ""
-diploid_dir: "/mnt/data/guinea_worm/nextstrain/original_vcf"
+# input diploid VCF from processing pipeline
+diploid_vcf: "/mnt/data/guinea_worm/processing/vcf_files/batch_Feb012024_jointGenotypeFiltered.vcf.gz"
 
 # filtering parameters for excluding samples and sites 
 # max missing parameters are on a proportional scale of 0 to 1
 # heterozygous proportion will be applied to the dominant allele
 vcf_filter:
-  site_max_missing: 0.1
+  site_max_missing: 0.5
   samp_max_missing: 0.5
   genotype_min_read: 5
   het_proportion: 1
+  missing_barcode_max: 0.1
 
 ################################################################################
 # meta_file: metadata about each sample
 # TAB DELIMITED file with the same sample names as in the vcf file above, each sample as a single now
-# at minimum requires the following columns (not case senstive):
+# at minimum requires the following columns (not case sensitive):
 # sample, GPS_E, GPS_N, host, year
-metadata: "/mnt/data/guinea_worm/metadata/mtDNA_NGS_Metadata_2021.11.04_msGroupsDemuxFixed.tsv"
+metadata: "/mnt/data/guinea_worm/metadata/GenomicSamplesMetadata_Database_v3.1_231006.txt"
+
 
 ################################################################################
 # Nextstrain object building options
-
 # ref_file: fasta file reference
 reference_file: "/mnt/data/guinea_worm/public_genomesGW/mt/DmedinensisMitochondrionComplete.fasta"
 

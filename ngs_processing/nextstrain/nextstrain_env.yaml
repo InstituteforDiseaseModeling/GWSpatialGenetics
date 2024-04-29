@@ -14,8 +14,12 @@ dependencies:
   - git
   - pip
   - r-base
+  - r-optparse
   - r-vcfr
   - r-data.table
   - r-tidyr
   - r-dplyr
-  - r-ggthemes
+  - r-tibble
+  - r-ggplot2
+  - r-ggpubr
+

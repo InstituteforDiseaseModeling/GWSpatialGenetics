@@ -1,15 +1,15 @@
 #######################################################################
-# Creates barcode clusers based on haploid VCF file for spatial analyses
+# Creates barcode clusters based on haploid VCF file for spatial analyses
 # Note: Will be updated with a new 
 # Author: Jessica Ribado, Institute for Disease Modeling
 # Date: 2021/11 
+# Update: 2024/04. This script is a duplicate of the first steps in the analysis manifest R script. Duplicating here to replicate the filtering steps to work with the NextStrain Snakemake pipeline, however the authors recommend creating the haploid VCF and associated files manually to confirm ideal filtering parameters.
 #######################################################################
 
 #######################################################################
 # set-up
 #######################################################################
-for(p in c('vcfR', 'data.table', 'dplyr', 'tidyr', 
-            'ggsci', 'ggthemes', 'shades', 'paletteer')){
+for(p in c('vcfR', 'data.table', 'dplyr', 'tidyr', 'tibble', 'stringr')){
   if(!p %in% installed.packages()[,1]){
     install.packages(p, repos =  "https://cloud.r-project.org", dependencies = T )
     library(p, character.only = TRUE)
@@ -21,31 +21,18 @@ for(p in c('vcfR', 'data.table', 'dplyr', 'tidyr',
 options(datatable.fread.datatable=FALSE)
 options(stringsAsFactors = FALSE)
 
+
 ################################################################################
 # load variables from snakemake
-metadata <- snakemake@input[['metadata']]
+complete_metadata <- snakemake@input[['metadata']]
 hap_vcf  <- snakemake@input[['haploid_vcf']]
-out_meta <- snakemake@output[['meta_clust']]
-out_cols <- snakemake@output[['meta_color']]
-out_geo  <- snakemake@output[['geo_info']]
+filt_prop <- snakemake@params[['missing_barcode_max']]
+updated_meta <- snakemake@output[['barcode_metadata']]
+
+# set other relevant variables
 
 ################################################################################
 # set reusable dataframes
-country_gps <- rbind.data.frame(
-    c("Sudan", 12.8628, 30.2176),
-    c("South Sudan", 4.85, 31.6),
-    c('Chad', 15.4542, 18.7322),
-    c('Niger',	17.6078, 8.0817),
-    c('Mali',  17.5707,	-3.9962),
-    c('Burkina Faso', 12.2383, -1.5616),
-    c("Cote d'Ivoire", 7.54, -5.5471),
-    c('Ghana', 7.9465, -1.0232),
-    c('Ethiopia',  9.145, 40.4897),
-    c('Angola', -11.2027, 17.8739),
-    c('Cameroon', 12.3547, 7.3697),
-    c("Central African Republic", 6.6194, 20.9367)) 
-names(country_gps) <- c("case_gps", "gps_n", "gps_e")
-
 country_codes <- rbind.data.frame(
   c("Sudan", "SUD"),
   c("South Sudan", "SSU"),
@@ -68,33 +55,111 @@ host_codes <- rbind.data.frame(
   c("Cat, Panthera pardus", "PPD"),
   c("Cat, wild unknown spp.", "WCT"),
   c("Baboon", "BAB"),
-  c("Unknown animal", "Unidentified")
-)
+  c("Unknown", "UNK"),
+  c("Unknown", "Unknown"))
 names(host_codes) <- c("host", "host_code")
 
-################################################################################
-# set colors 
-gene_base <- data.frame(
-    category = "original_barcode",
-    value = seq(1,11),
-    colors = c("#FF7F00", "#CD0000", "#008B8B", "#7A378B", "#528B8B",
-     "#FF6347", "#8DEEEE", "#EEA2AD", "#B4EEB4", "#2F4F4F", "#CDAA7D")
-)
-
-amplicon_base <- c("#D12600", "#DB6A00", "#B2FF2E", "#00AD00", "#9CCADE", 
-                  "#005B94", "#1E2085", "#610052", "#953272")
-kinship_base <- c("#C62828", "#F44336", "#9C27B0", "#673AB7", "#3F51B5", 
-    "#2196F3", "#006064", "#009688", "#4CAF50", "#8BC34A", "#FFEB3B", 
-    "#FF9800", "#FFFFFF")
-progeny_base <- c("#CC3D24", "#F3C558", "#6DAE90", "#30B4CC", "#004F7A")
-reduced_base <- setNames(c("#D9C6B8", "#C2B0A3", "#836F65"), 
-                         c("Observed once", "Observed in < 5 samples", "Observed in < 10 samples")) 
-unaffil_base <- c("#96725B", "#7D4C29", "#613922", "#000000")
 
 
 #######################################################################
 # functions
 #######################################################################
+# For metadata checks
+metadata_minor_reformat <- function(df){
+  names(df) <- gsub(" ", "_", tolower(names(df)))  
+  df <- df %>%
+        dplyr::mutate(vassar_worm = gsub(".*_", "", genomics_sample_id),
+                      host = gsub(",domestic", ", domestic", host))
+  return(df)
+}   
+
+
+# steps from https://stackoverflow.com/questions/30879429/how-can-i-convert-degree-minute-sec-to-decimal-in-r  
+check_gps_degrees <- function(df){
+  # check samples for characters commonly associated with degree GPS coordinates
+  degrees <- dplyr::filter(df, grepl("\'", gps_n)) %>%
+    dplyr::rename(degree_n = gps_n, degree_e = gps_e)
+  
+  if(nrow(degrees) > 0){
+    print(paste("Found", nrow(degrees), "samples that require GPS reformatting."))
+    degrees_tmp <- dplyr::select(degrees, degree_n, degree_e) %>% unique() %>%
+      tidyr::separate(degree_n, c("N_D", "N_Min", "N_SInt","N_SDec"), remove=F) %>%
+      tidyr::unite("N_Sec", "N_SInt","N_SDec", sep = ".") %>%
+      tidyr::separate(degree_e, c("E_D", "E_Min", "E_SInt","E_SDec"), remove=F) %>%
+      tidyr::unite("E_Sec", "E_SInt","E_SDec", sep=".") %>%
+      mutate(across(!starts_with("degree"),
+                    ~ as.numeric(as.character(.)))) %>%
+      mutate(gps_n = as.character(N_D + N_Min/60 + N_Sec/60^2),
+             gps_e = as.character(E_D + E_Min/60 + E_Sec/60^2)) %>%
+      dplyr::select(degree_n, gps_n, degree_e, gps_e) %>%
+      dplyr::inner_join(., degrees)
+    
+    # check merging results in non-duplicated samples
+    original_length <- nrow(df)
+    df <- dplyr::bind_rows(
+      dplyr::filter(df, !genomics_sample_id %in% degrees$genomics_sample_id),
+      degrees_tmp)
+    if(nrow(df) != original_length){
+      exit("Effort to convert degrees resulted in larger metadata file.\n
+      Check metadata file and retry.")
+    } 
+   } else {
+    print("No entries in the metadata file contain GPS coordinates as degrees.")
+    df <- df
+  }  
+  return(df)  
+}
+
+check_sample_metadata <- function(df, vcf_samples = vcf_samples){
+  # identify worm numbers that are in the VCF file but not the provided metadata
+  missing_meta <- dplyr::filter(vcf_samples, !vassar_worm %in% df$vassar_worm)
+  
+  if (nrow(missing_meta) > 0){
+    print(paste("Found", nrow(missing_meta), "sequences sample that does not match the metadata file.\n
+              Parsing the sequencing name to fill high level metadata."))
+    name_suffix <- gsub("_.*", "", missing_meta$sample)
+    fill_missing <- bind_cols(
+      genomics_sample_id = missing_meta$sample,
+      vassar_worm = missing_meta$vassar_worm,
+      country_code = substr(name_suffix, 1, 3),
+      host_code = sapply(name_suffix, function(i) ifelse(nchar(i) < 10, "Unknown", substr(i, 4, 6))),
+      year = as.numeric(gsub("[[:alpha:]]", "", name_suffix)),
+    )
+    fill_missing <- dplyr::left_join(fill_missing, country_codes) %>%
+      dplyr::left_join(., host_codes) %>%
+      dplyr::select(-host_code, -country_code)
+    
+    complete_meta <- dplyr::filter(df, vassar_worm %in% df$vassar_worm)
+    df <- dplyr::bind_rows(complete_meta, fill_missing) 
+  } else{
+    print("All worm numbers in the VCF file are represented in the the metadata file.")
+    df <- df
+  }
+  names(df) <- gsub(" ", "_", tolower(names(df)))
+  return(df)
+}
+
+# add column for which samples have been excluded due to sample coverage
+merge_sequencing_quality <- function(df, excluded_samples){
+  excluded_worm_numbers <- excluded_samples %>%
+    dplyr::mutate(vassar_worm = gsub("^[^_]*_|.batch.*", "", lab_id)) 
+  df <- dplyr::left_join(df, excluded_worm_numbers)
+  return(df)
+}
+
+run_metadata_checks <- function(df, vcf_samples, excluded_samples){
+  df <- metadata_minor_reformat(df) %>%
+    check_sample_metadata(., vcf_samples) %>%
+    check_gps_degrees(.)
+
+  #few final format fixes
+  df <- df %>%
+    dplyr::mutate(gps_n = gsub(" ", "", gsub(",", ".", gps_n)),
+                  gps_e = gsub(" ", "", gsub(",", ".", gps_e)))
+  return(df)
+}
+
+# For barcode assignment
 grpid <- function(x) match(x, unique(x))
 
 gt2barcode <- function(vcf){
@@ -109,65 +174,20 @@ gt2barcode <- function(vcf){
                   frequency = n()) %>%
     dplyr::arrange(desc(frequency), group) %>% ungroup() %>%          
     dplyr::mutate(
-        amplicon_barcode = group %>% grpid,
-        amplicon = ifelse(frequency == 1, "Observed once",
-            ifelse(frequency < 5, "Observed in < 5 samples",
-                ifelse(frequency < 10, "Observed in < 10 samples", amplicon_barcode))))
-
-    return(sequences)
-}
-
-geo_tag <- function(metadata){
-
-    if(!"sample" %in% colnames(metadata)){
-        exit("Metadata file missing 'sample' column.")
-    } 
-
-    if(!(c("gps_e") %in% colnames(metadata)) | !(c("gps_e") %in% colnames(metadata))){
-        exit("Metadata file missing longitude (GPS_E) and/or latitude (GPS_N) columns.")
-    } 
-
-    gps_coords <- dplyr::select(metadata, gps_n, gps_e) %>%
-        drop_na() %>% unique() %>%
-        tibble::rowid_to_column("case_gps") 
-
-    geo_tsv(gps_coords, out_geo)    
-
-    return(gps_coords)    
-}
-
-geo_tsv <- function(gps_coords, output_file){
-   total_gps <- rbind.data.frame(
-       cbind(Tag = "country", country_gps),
-       cbind(Tag = "case_gps", rbind(country_gps, gps_coords))
-    )
-    write.table(total_gps, file = output_file, quote = F, row.names = F, col.names = F, sep="\t")     
-}
-
-nextstrain_colors <- function(df, column, base_colors){
-  # double the number of available colors
-  expanded_colors <- c(base_colors, 
-                       saturation(paste0(base_colors, "FF"), scalefac(0.5)),
-                       saturation(paste0(base_colors, "FF"), scalefac(0.25)))
+      amplicon_barcode = group %>% grpid,
+      amplicon = ifelse(frequency == 1, "Observed once",
+                        ifelse(frequency < 5, "Observed in < 5 samples",
+                               ifelse(frequency < 10, "Observed in < 10 samples", amplicon_barcode))))
   
-  col_entries <- dplyr::pull(df, column)
-  ungrouped  <- sort(unique(col_entries[grepl("unaffiliated", col_entries)]))
-  grouped <- names(sort(table(col_entries[!grepl("unaffiliated|Observed", col_entries)]), decreasing=T))
-  if(length(ungrouped) > 0){
-    merged_group <- c(setNames(expanded_colors[1:length(grouped)], grouped), 
-                      setNames(unaffil_base[1:length(ungrouped)], ungrouped))
-  }else{
-    merged_group <- setNames(expanded_colors[1:length(grouped)], grouped)
-  }
-
-  colors <- cbind(category = column,
-    data.frame(colors = c(merged_group,
-    reduced_base[names(reduced_base) %in% unique(col_entries)])) %>%
-    tibble::rownames_to_column("value"))
-  return(colors)
+  return(sequences)
 }
-  
-  
+
+
+# other functions
+SaveTabDelim <- function(r_obj, path){
+  write.table(r_obj, file = path, quote = F, row.names = F, sep="\t")
+}
+
 #######################################################################
 # run
 #######################################################################
@@ -175,120 +195,24 @@ nextstrain_colors <- function(df, column, base_colors){
 vcf <- vcfR::read.vcfR(hap_vcf, verbose = FALSE)
 vcf_clust <- gt2barcode(vcf)
 
-# add to metadata
-metadata <- read.delim(metadata, sep="\t") %>%
-  dplyr::mutate(vassar_worm = gsub(".*_", "", Genomics.Sample.ID)) %>%
-  dplyr::rename("SampleDate"="Sample.date")
-names(metadata) <- tolower(names(metadata))
-metadata[metadata == "." & !is.na(metadata)] <- NA
+# generate barcodes from high quality positions
+vcf_clust <- gt2barcode(vcf) %>%
+  dplyr::mutate(vassar_worm = gsub("^[^_]*_|.batch.*", "", sample),
+                filt_missing_prop = stringr::str_count(sequence, "\\.")/nchar(sequence),
+                excluded_for_analysis = ifelse(filt_missing_prop > filt_prop, "Yes", "No")) 
 
-# check that metadata exists for all files in the VCF
+# get names of sampled in the vcf
 vcf_samples <- colnames(vcf@gt)[-1]
 vcf_numbers <- cbind.data.frame(
   sample = vcf_samples,
   vassar_worm = gsub(".*_", "", vcf_samples))
-# merge back with metadata
-metadata <- dplyr::left_join(metadata, vcf_numbers)
 
-yes_meta <- dplyr::filter(metadata, vassar_worm %in% vcf_numbers$vassar_worm)
-missing_meta <- vcf_samples[!vcf_samples %in% yes_meta$sample]
-if (length(missing_meta) > 0){
-  name_suffix <- gsub("_.*", "", missing_meta)
-  fill_missing <- bind_cols(
-    sample = missing_meta,
-    country_code = substr(name_suffix, 1, 3),
-    host_code = sapply(name_suffix, function(i) ifelse(nchar(i) < 10, "Unidentified", substr(i, 4, 6))),
-    year = as.numeric(gsub("[[:alpha:]]", "", name_suffix))
-  )
-  
-  fill_missing <- dplyr::inner_join(fill_missing, country_codes) %>%
-    dplyr::inner_join(., host_codes) %>%
-    dplyr::select(-host_code, -country_code)
-  metadata <- dplyr::bind_rows(fill_missing, yes_meta) %>%
-    dplyr::filter(sample %in% vcf_samples)
-  #print(head(metadata))
-  if(nrow(metadata) != length(vcf_samples)){
-    print(paste("Metadata available for", nrow(metadata), "samples."))
-    print(paste("VCF files contains", length(vcf_samples), "samples prior to filtering."))
-    #stop("The metadata columns do not match the number of samples in the VCF after parsing names. Please check input names.")
-  }
-}
+# read in and check metadata
+metadata <- data.table::fread(complete_metadata, sep="\t")
+metadata[metadata == "." & !is.na(metadata)] <- NA
+metadata <- run_metadata_checks(metadata, vcf_samples = vcf_numbers, excluded_samples = hap_vcf$missing_df)
+metadata <- dplyr::left_join(metadata, vcf_clust) %>%
+  dplyr::mutate(epi_foci = ifelse(epi_foci == "", NA, gsub(" focal area", "", epi_foci)),
+                successfully_sequenced = ifelse(!is.na(filt_missing_prop), "Yes", "No"))
 
-
-if("original_barcode" %in% names(metadata)){
-    print("Barcode sets with the original protocol provided. ")
-    metadata <- dplyr::mutate(metadata, 
-      original_barcode = as.numeric(metadata$original_barcode),
-      original_protocol = ifelse(!is.na(original_barcode), "Sequenced", "Not sequenced"))
-    ns_colors <- dplyr::filter(gene_base, value %in% metadata$original_barcode)
-} 
-
-# check the number of samples per group to assign new colors for grouping, if needed
-min_samples = 5
-if("kinship_group" %in% names(metadata)){
-  print("Kinship groups are provided.")
-  if (length(unique(na.omit(metadata$kinship_group))) > length(kinship_base)*2){
-    print(" More kinships than available colors. Assigning kinship groups found in less than 5 samples to a single color. ")
-    metadata <- dplyr::group_by(metadata, kinship_group) %>%
-      dplyr::mutate(kinship_frequency = n(),
-                    kinship = ifelse(kinship_frequency < min_samples | grepl("unaffliated", kinship_group), paste("Observed in <", min_samples, "samples"), kinship_group))
-    if(length(unique(na.omit(metadata$kinship))) >  length(kinship_base)*2){
-      exit(paste0("Too many colors (>",  length(kinship_base)*2, ") for automatic coloring, requires manual color palette updates. Exiting."))
-    }
-  } else {
-    metadata <- dplyr::group_by(metadata, kinship_group) %>%
-      dplyr::mutate(kinship_frequency = n(),
-                    kinship = kinship_group)
-  }
-  kinship_colors <- nextstrain_colors(metadata, "kinship", kinship_base)
-  if(exists("ns_colors")){
-    ns_colors <- rbind(ns_colors, kinship_colors)
-  } else{
-    ns_colors <- kinship_groups
-  }
-  
-  if("progeny_group" %in% names(metadata)){
-    if (length(unique(na.omit(metadata$progeny_group))) > length(progeny_base)*2){
-      print("More parent offspring pairs than available colors.
-            Assigning pairs with less than 5 samples per family to a single color. ")
-      metadata <- dplyr::group_by(metadata, progeny_group) %>%
-        dplyr::mutate(progeny_frequency = n(),
-                      progeny = ifelse(progeny_frequency < min_samples, paste("Observed in <", min_samples, "samples"), progeny_group)) 
-    } else{
-      metadata <- dplyr::group_by(metadata, progeny_group) %>%
-        dplyr::mutate(progeny_frequency = n(),
-                      progeny = progeny_group)
-    }
-    ns_colors <- rbind(ns_colors, nextstrain_colors(metadata, "progeny", progeny_base))
-  }  
-  metadata <- metadata %>% ungroup()
-  metadata$microsatellite_protocol <- ifelse(!is.na(metadata$kinship_group), "Sequenced", "Not sequenced")
-} 
-
-meta_cluster <- dplyr::inner_join(metadata, vcf_clust) %>%
-    left_join(., geo_tag(metadata)) 
-write.table(meta_cluster, file = gsub("_clusters", "_allInfo", out_meta), sep="\t", quote=F, row.names=F) 
-
-ideal_columns <- c("sample", "host", "year", "sampledate", "country", "case_gps",
-                  "original_barcode", "amplicon_barcode", "amplicon", 
-                  "kinship_group", "kinship", "progeny_group", "progeny", 
-                  "original_protocol", "microsatellite_protocol")
-filt_columns <- names(meta_cluster)[names(meta_cluster) %in% ideal_columns]
-
-meta_simplified <- dplyr::select(meta_cluster, all_of(filt_columns)) %>%
-    dplyr::mutate(
-        strain = sample,
-        case_gps = ifelse(is.na(case_gps), country, case_gps), 
-        year = as.numeric(year),
-        sampledate = ifelse(sampledate == "", paste0("01/01/",year), sampledate), 
-        sampledate = as.Date(sampledate, format = "%m/%d/%Y")) %>%
-    dplyr::rename(name = sample, date = sampledate) %>% unique()
-write.table(meta_simplified, file = out_meta, sep="\t", quote=F, row.names=F) 
-
-nextidentical_cols <- nextstrain_colors(meta_simplified, "amplicon", amplicon_base)
-# check if other genotype categories need to be included in the output file
-if(exists("ns_colors")){
-  nextidentical_cols <- rbind.data.frame(nextidentical_cols, ns_colors) 
-} 
-
-write.table(nextidentical_cols, file = out_cols, sep="\t", row.names=F, col.names=F, quote=F)
+SaveTabDelim(metadata, updated_meta)                
