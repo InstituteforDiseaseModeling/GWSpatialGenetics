@@ -9,22 +9,20 @@ Authors - Jessica Ribado and Ben Siranosian
 import sys
 from os.path import exists, join
 
-
 JOINT_DIR =  join(PARENT_DIR, "joint_calling_known") if os.path.isfile(VARIANT_FILE) else join(PARENT_DIR, "joint_calling_recal")
 
 ################################################################################
 checkpoint check_samples:
     input: get_gvcf_list()
     output: 
-        sample_list = temp(join(JOINT_DIR, BATCH_NAME, "gvcf_tmp.tsv"))
+        sample_list = join(JOINT_DIR, BATCH_NAME, "gvcf_tmp.tsv")
     run: 
         check_sample_names(str(input), JOINT_DIR)
 
 ################################################################################
 rule merge_batch_bams:
     ''' Merges aligned deduplicated reads for each replicate. '''
-    input:  
-        merged_name = join(JOINT_DIR, BATCH_NAME, "{merged_sample}.txt") 
+    input:  join(JOINT_DIR, BATCH_NAME, "{merged_sample}.txt") 
     output: 
         bam = join(JOINT_DIR, BATCH_NAME, "{merged_sample}.bam"),
         bai = join(JOINT_DIR, BATCH_NAME, "{merged_sample}.bam.bai")
@@ -54,7 +52,7 @@ rule merge_call_haplotypes:
     """
 
 ################################################################################
-rule update_gvcf_list:
+rule  update_gvcf_list:
     input:  gvcf_list
     output: join(JOINT_DIR, "gvcf_lists", f"{BATCH_NAME}_genomicDB_gvcfs.txt")
     run:
@@ -66,7 +64,7 @@ rule update_gvcf_list:
 ################################################################################
 rule cumulative_gvcf_list:
     input:  rules.update_gvcf_list.output
-    output: temp(join(JOINT_DIR, "gvcf_lists", f"{BATCH_NAME}_cumulative.txt"))
+    output: join(JOINT_DIR, "gvcf_lists", f"{BATCH_NAME}_cumulative.txt")
     params:
         gvcf_dir = join(JOINT_DIR, "gvcf_lists")
     shell: """

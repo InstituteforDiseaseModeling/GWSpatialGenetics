@@ -46,6 +46,25 @@ make_gradient <- function(deg = 45, n = 100, cols = blues9) {
 
 
 ################################################################################
+# Merge metadata
+################################################################################
+MergeMeta <- function(df, metadata = metadata_slim){
+  df <- df %>%
+    dplyr::inner_join(., dplyr::rename(metadata, 'sample.x'='sample'), by="sample.x") %>%
+    dplyr::inner_join(., dplyr::rename(metadata, 'sample.y'='sample'), by="sample.y") %>%
+    dplyr::mutate(
+      country_pair = ifelse(country.x == country.y, country.x, "Different countries"),
+      country_pair = factor(country_pair, levels=names(country_colors)),
+      host_pair = ifelse(host.x == host.y, host.x, "Different hosts"),
+      year_pair = ifelse(year.x == year.y, year.x, "Across years"),
+      diff_days = abs(as.numeric(difftime(emergence_date.x, emergence_date.y, unit="days"))),
+      time_pair = ifelse(420 >= diff_days & diff_days >= 300, "10-14 Months", "Not in 10-14 months")
+    )
+  return(df)
+} 
+
+
+################################################################################
 # Relatedness functions
 ################################################################################
 HaversineDist <- function(gps_coords){
@@ -128,11 +147,14 @@ base_colors <- c("#FF3200FF",  "#D12600", "#DB6A00", "#F9AB0EFF", "#FFED00FF",
                  "#C70E7BFF", "#FC6882FF", "#FF847CFF")
 nextstrain_colors <- setNames(c(base_colors, 
                                 shades::saturation(base_colors, shades::scalefac(0.50)),
-                                shades::saturation(base_colors, shades::scalefac(0.20))),                                
+                                shades::saturation(base_colors, shades::scalefac(0.25))),                                
                                 seq(1, length(base_colors)*3))
 reduced_base <- setNames(c("#D9C6B8", "#C2B0A3", "#836F65", "#52271CFF"), 
                          c("Observed once", "Observed in < 5 samples", "Observed in < 10 samples", "Observed in < 20 samples")) 
-nextstrain_colors <- c(nextstrain_colors, reduced_base)
+extra_colors <- c("#E51E32FF", "#FF782AFF", "#FDA805FF", "#E2CF04FF", "#B1CA05FF", "#98C217FF", "#779815FF", "#029E77FF", "#09989CFF", "#059CCDFF", "#3F64CEFF", "#7E2B8EFF")
+extra_colors <- setNames(c(extra_colors, shades::saturation(extra_colors, shades::scalefac(0.50))),
+                              seq(length(nextstrain_colors)+1, length(nextstrain_colors)+length(extra_colors)*2))
+nextstrain_colors <- c(nextstrain_colors, reduced_base, extra_colors)
 
 # countries
 set.seed(15)
@@ -145,8 +167,18 @@ country_colors <- setNames(c(country_colors, "#666666"),
 
 
 # hosts 
-host_colors <- setNames(c(rev(c("#6DAE90FF", "#CC3D24", "#999999", "#F3C558", "#088158", "#30B4CC", "#004F7A")), "#666666"),
-                        c("Human", "Dog", "Cat, domestic", "Cat, wild unknown spp.", "Baboon (Papio anubis)", "Leopard (Panthera pardus)", "Unknown", "Different hosts"))
+host_colors <- setNames(
+  c("#004F7A", "#30B4CC",
+    rev(c("#E7E5CCFF", "#C2D6A4FF", "#9CC184FF", "#669D62FF", "#3C7C3DFF", "#1F5B25FF")),
+    "#CC3D24", "#F3C558", "#999999", "#666666"),
+  c("Human", "Dog", 
+    "Cat (domestic)", "Cat (wild unknown spp.)", "Leopard (Panthera pardus)", "Serval", "Genet", "Civet",
+    "Baboon (Papio anubis)", "Equine (donkey etc)", 
+    "Unknown", "Different hosts"))
+
+  
+# c(rev(c("#6DAE90FF", "#CC3D24", "#999999", "#F3C558", "#088158", "#30B4CC", "#004F7A")), "#666666"),
+#                       c("Human", "Dog", "Cat, domestic", "Cat, wild unknown spp.", "Baboon (Papio anubis)", "Leopard (Panthera pardus)", "Unknown", "Different hosts"))
 
 ################################################################################
 # barcode
@@ -271,7 +303,7 @@ similarity_distributions <- function(df, similarity = "rmNA"){
 } 
 
 # spatial relatedness
-dist_by_sim_plot <- function(df){
+dist_by_sim_plot <- function(df, diff_all = genetic_diff){
   df <- df  %>%
     dplyr::mutate(year = as.character(year),
                   has_gps = ifelse(!is.na(gps_n) & !is.na(gps_e), "Provided", "Missing"))
@@ -286,6 +318,8 @@ dist_by_sim_plot <- function(df){
     labs(title = "Specimens with GPS coordinates", x="Year", y="Sequenced specimens") +
     theme(axis.text.x = element_text(angle = 30, hjust = 1))
   bins <- dplyr::filter(diff_all, sample.x %in% df$sample & sample.y %in% df$sample) %>%
+    MergeMeta(.) %>%
+    left_join(., dplyr::rename(pairwise_dist, sample.x=Var1, sample.y=Var2)) %>% 
     dplyr::mutate(year_diff=abs(as.numeric(year.x) - as.numeric(year.y)),
                   year_diff=ifelse(year_diff == 0, "Same year",
                                    ifelse(year_diff == 1, "Within one year", "> One year"))) %>%
@@ -311,8 +345,12 @@ dist_by_sim_plot <- function(df){
 
 ################################################################################
 # multipanel plots
-ClusterPlots <- function(df, cluster_id=NA, output_name=NA, filter_min=0, pairwise_df = diff_all, #sample_name="wormnum_dpdxid"
-                         sample_name = "sample"){
+ClusterPlots <- function(df, cluster_id=NA, output_name=NA, filter_min=0, 
+                         pairwise_df = genetic_diff,
+                         #pairwise_df = diff_all, 
+                         sample_name = "sample"
+                         #sample_name="wormnum_dpdxid"
+                         ){
   if(is.na(output_name)){
     if(!is.na(cluster_id)){
       output_name <-  paste0("cluster_", gsub(" |cluster", "", cluster_id))
@@ -349,24 +387,25 @@ ClusterPlots <- function(df, cluster_id=NA, output_name=NA, filter_min=0, pairwi
     
     # relatedness and missing-ness plots
     tmp_pair <- dplyr::filter(pairwise_df, sample.x %in% df_cluster$sample & sample.y %in% df_cluster$sample) %>%
-      mutate(outline = ifelse(rmNA == 0, T, NA))
+      mutate(outline = ifelse(rmNA == 0, T, NA)) %>%
+      MergeMeta(.)
     related_joint <- related_and_missing_plot(tmp_pair, eval(sample_name), filter_min=filter_min)
     
     # variant position plots
-    position <- position_plot(df_cluster, eval(sample_name))
+    # position <- position_plot(df_cluster, eval(sample_name))
     
     # all combined
     plot_name <- paste0("Cluster ID: ", output_name, "\n", 
                         "Narrative samples: ", nrow(df_cluster), "; Sequenced specimens: ", sum(!is.na(df_cluster$amplicon)))
     plot <-  ggpubr::ggarrange(
-      ggpubr::ggarrange(general_joint, related_joint, ncol=2, widths = c(1,2)),
-      position, nrow=2, heights = c(2.75,1))
+      ggpubr::ggarrange(general_joint, related_joint, ncol=2, widths = c(1,2))) #,
+      # position, nrow=2, heights = c(2.75,1))
     plot <- ggpubr::annotate_figure(plot, top = plot_name)
     
     # save plot
     plot_height <- ifelse(nrow(df_cluster) <= 15, 8, 21) 
     plot_width <- ifelse(nrow(df_cluster) <= 15, 10, 26)
-    SavePlots(plot, output_dir, paste0(output_name, ".png"), height=plot_height, width=plot_width)
+    SavePlots(plot, output_dir, paste0("relatednessMatrix_", output_name, ".png"), height=plot_height, width=plot_width)
     
     potential_outliers <- "Exit"
   } else{
@@ -382,5 +421,5 @@ SavePlots <- function(ggplot_obj, plot_path, name, width=8, height=4){
   ggsave(paste0(format(Sys.time(), "%Y%m%d"), "_", name), 
          plot = ggplot_obj,
          path = plot_path,
-         width = width, height = height, units = c("in"), dpi = 72)
+         width = width, height = height, units = c("in"), dpi = 100)
 }

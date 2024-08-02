@@ -18,9 +18,11 @@ import glob
 PROJECT_DIR = config["output_directory"]
 REF_FILE = config['reference_file']
 VARIANT_FILE = config['variant_calling']['known_variants']
-FILE_STRUCTURE = PROJECT_DIR.rsplit('/', 1)
+FILE_STRUCTURE = PROJECT_DIR.rsplit('/', 2)
 PARENT_DIR = FILE_STRUCTURE[0]
 BATCH_NAME = FILE_STRUCTURE[1]
+print("The parent directory is", PARENT_DIR)
+print("The batch prefix is", BATCH_NAME)
 MAX_ITER = 0 if os.path.isfile(VARIANT_FILE) else config['max_iter']
 
 # Specific to primers - update for NGS but not worth 

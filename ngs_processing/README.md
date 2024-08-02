@@ -4,6 +4,8 @@ The Institute of Disease Modeling has been part of an interdisciplinary  collabo
 
 This pipeline is can process NGS sequencing from whole mitochondrial DNA to variants, however default settings gave been updated to process samples that have been processed using an amplicon panel. 
 
+**2024/08: EICC_Version branch contains files updated by Robert Arthur at the Emory Integrated Computational Core. They are not tested by IDM, for any issues with run errors, contact Robert Arthur directly at robert.arthur@emory.edu.**
+
 #### Pipeline updates as of October 2021:
 * Single step single batch processing and joint genotyping with samples in existing data base
 * Detection and merging of duplicate biological samples by exact name matching across sequencing batches. 

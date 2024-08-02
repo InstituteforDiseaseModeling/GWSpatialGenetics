@@ -19,7 +19,7 @@ option_list = list(
               help="Output directory. A subdirectory with the batch name from the VCF file name will be automatically created at the provided path. If none provided, will output to a folder in the running directory with the date.", metavar="character"),
   make_option(c("-s", "--samp_missing"), type="numeric", default=0.5, 
               help="The proportion of positions missing in a sample to consider sample exclusion.", metavar="character"),
-  make_option(c("-p", "--site_missing"), type="numeric", default=0.5, 
+  make_option(c("-p", "--site_missing"), type="numeric", default=0.75, 
               help="The proportion of samples missing a variant call to consider variant exclusion from the barcode.", metavar="character"),
   make_option(c("-g", "--min_gt_depth"), type="numeric", default=5, 
               help="The minimum number of reads per site in individual sample to consider the variant call accurate.", metavar="character"),
@@ -55,7 +55,10 @@ getScriptPath <- function(){
   cmd.args <- commandArgs()
   m <- regexpr("(?<=^--file=).+", cmd.args, perl=TRUE)
   script.dir <- dirname(regmatches(cmd.args, m))
-  if(length(script.dir) == 0) stop("can't determine script dir: please call the script with Rscript")
+  if(length(script.dir) == 0){
+    print("Cannot determine script directory, setting script directory to working directory.")
+    script.dir = getwd()
+  }  
   if(length(script.dir) > 1) stop("can't determine script dir: more than one '--file' argument detected")
   return(script.dir)
 }
@@ -79,8 +82,8 @@ SaveTabDelim <- function(r_obj, path){
 # input files and options
 ################################################################################
 # set manual options for manual updates and runs of this code
-diploid_vcf <- "/mnt/data/guinea_worm/processing/vcf_files/batch_Feb012024_jointGenotypeFiltered.vcf.gz"
-metadata_file <- "/mnt/data/guinea_worm/metadata/GenomicSamplesMetadata_Database_v3.1_231006.txt"
+diploid_vcf <- "/mnt/data/guinea_worm/processing/vcf_files/batch_July082024_jointGenotypeFiltered.vcf.gz"
+metadata_file <- "/mnt/data/guinea_worm/metadata/GenomicSamplesMetadata_Database_v3.1_240611.txt"
 project_dir <- "/mnt/data/guinea_worm/analyses"
 # samp_missing <- 0.5
 # site_missing <- 0.5
@@ -135,7 +138,8 @@ metadata[metadata == "." & !is.na(metadata)] <- NA
 metadata <- run_metadata_checks(metadata, vcf_samples = vcf_numbers, excluded_samples = hap_vcf$missing_df)
 metadata <- dplyr::left_join(metadata, vcf_clust) %>%
   dplyr::mutate(epi_foci = ifelse(epi_foci == "", NA, gsub(" focal area", "", epi_foci)),
-                successfully_sequenced = ifelse(!is.na(filt_missing_prop), "Yes", "No"))
+                successfully_sequenced = ifelse(!is.na(filt_missing_prop), "Yes", "No"),
+                host = factor(host, levels = names(host_colors)))
 
 
 # save files for other analyses - i.e. Nextstrain, for collaborators
@@ -143,6 +147,8 @@ vcfR::write.vcf(hap_vcf$vcf,  paste0(output_dir, "/", batch_name, "_jointHaploid
 SaveTabDelim(hap_vcf$summary, paste0(output_dir, "/", batch_name, "_filterSummary.tsv"))
 SaveTabDelim(metadata, paste0(output_dir, "/", "GenomicSamplesMetadata_Database_", batch_name, ".tsv"))
 
+# clear for memory
+rm(vcf)
 
 ################################################################################
 # One off requests
@@ -284,6 +290,8 @@ gt <- data.frame(t(tmp_gt))
 names(gt) <- row.names(tmp_gt)
 row.names(gt) <- names(tmp_gt)
 genetic_diff <- PairwiseDifference(gt)
+genetic_diff <- dplyr::rename(genetic_diff, sample.x='Var1', sample.y='Var2')
+SaveTabDelim(genetic_diff, paste0(output_dir, "/", batch_name, "_relatedness.txt"))
 
 diff_df <- unique(dplyr::left_join(genetic_diff, pairwise_dist)) %>%
   mutate_cond(Var1==Var2, All=NA, rmNA=NA, missing=NA, meters=NA)
@@ -319,10 +327,21 @@ rm(density_p)
 ################################################################################
 # Angola
 ang <- dplyr::filter(metadata, country == "Angola")
-diff_ang <- dplyr::filter(diff_all, country_pair == "Angola")
 
 ClusterPlots(dplyr::filter(ang, year > 2017), output_name="Angola2018+_PDB", sample_name = "wormnum_dpdxid")
 SavePlots(dist_by_sim_plot(ang), output_dir, "simDist_ANG.png", height=5, width=10)
+
+# Try new plot
+devtools::install_github("jokergoo/circlize")
+require("circlize")
+diff_ang <- dplyr::filter(genetic_diff, str_detect(sample.x, "^ANG") & str_detect(sample.y, "^ANG")) %>% 
+  MergeMeta(.)
+
+chordDiagram(diff_ang %>%
+  dplyr::rename(from=year.x, to=year.y) %>% 
+  dplyr::select(from, to, rmNA), 
+  link.visible = diff_ang$rmNA == 0)
+
 
 # check which barcodes may be observed in other populations
 angola_barcodes <- unique(ang$amplicon_barcode)
@@ -331,7 +350,8 @@ unique(shared_barcodes$country)
 
 # identify potential links for barcodes with missing positions
 ang_missing <- dplyr::filter(ang, amplicon == "Observed once") %>% .[["sample"]]
-ang_potential_links <- dplyr::filter(diff_all, (sample.x %in% ang_missing | sample.y %in% ang_missing) & rmNA == 0 & missing < 0.1)
+ang_potential_links <- dplyr::filter(genetic_diff, (sample.x %in% ang_missing | sample.y %in% ang_missing) & rmNA == 0 & missing < opt$filt_prop) %>%
+  MergeMeta(.)
 if(nrow(dplyr::filter(ang_potential_links, country_pair != "Angola")) > 0){
   ClusterPlots(ang_potential_links, output_name="AngolaPotentialLinks", sample_name = "wormnum_dpdxid")
 } else{
@@ -344,7 +364,7 @@ if(nrow(dplyr::filter(ang_potential_links, country_pair != "Angola")) > 0){
 
 # All samples
 ClusterPlots(dplyr::filter(metadata, country == "Cameroon"), output_name="CameroonAll_Filter0.9+", filter_min=0.1)
-ClusterPlots(dplyr::filter(metadata, country == "Cameroon" | adminb %in% c("Bongor", "Fianga")), filter_min=0.1, output_name="Cameroon&BongorFianga_Filter0.9+")
+ClusterPlots(dplyr::filter(metadata, country == "Cameroon" | adminb %in% c("Bongor", "Fianga")), filter_min=opt$filt_prop, output_name="Cameroon&BongorFianga_Filter0.9+")
 
 
 # Cameroon and the northwestern Chadian border
@@ -420,6 +440,53 @@ stat_ecdf(aes(color = host_pair)) +
   scale_color_manual(values=host_colors) +
   labs(x="Genetic similarity", y="Cumulative density",
        color="Country of pairs of worms")
+
+# Specific baboon questions by Lexi 05/30/2024
+sample_name <- "wormnum_dpdxid"
+filter_min=0
+
+# What is the relatedness is term of mitochondrial DNA for the Gog baboon worms, which is all the baboon from 2016-2020. 
+# I have mapped the locations and presumed troops of each baboon. I know there were no sibling or parent worms between individual baboons,  but are there any “family” clusters that I might also compare to known movement and overlap between troops in this area? 
+# How many mitochondrial types total have been found in baboons in Gog, and do any overlap with the baboons in Abobo (2022 baboons)?
+eth_bab <- dplyr::filter(eth, host == "Baboon (Papio anubis)") 
+df_cluster <- dplyr::filter(eth_bab, year > 2015 & year < 2023) 
+gog_amp <- dplyr::filter(df_cluster, adminb == "Gog") %>% .[['amplicon_barcode']] %>% unique()
+abobo_amp <- dplyr::filter(df_cluster, adminb == "Abobo") %>% .[['amplicon_barcode']] %>% unique()
+intersect(gog_amp, abobo_amp)
+
+tmp_pair <- dplyr::filter(diff_eth, sample.x %in% df_cluster$sample & sample.y %in% df_cluster$sample) %>%
+  mutate(outline = ifelse(rmNA == 0, T, NA))
+related_joint <- related_and_missing_plot(tmp_pair, eval(sample_name), filter_min=filter_min)
+SavePlots(related_joint, output_dir, "ETHGogandAboboRelatedness.png", 
+          height=15, width=15)
+
+bab_amps <- gog_bab %>%
+  dplyr::mutate(amplicon2 = ifelse(frequency == 1, "Observed once", amplicon_barcode)) %>%
+  ggplot(aes(x=year, y=..count.., fill=amplicon2)) +
+  geom_bar(color="black", size=0.25) +
+  #scale_fill_manual(values=nextstrain_colors) +
+  scale_x_continuous(breaks = c(seq(min(eth_bab$year), max(eth_bab$year)))) +
+  labs(title = paste("Barcodes in Ethiopian Baboons (Gog and Abobo)"),
+       subtitle = "(Groups determined by frequency in an all country library)",
+       x="Year", y="Specimens", fill="Barcode") +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+SavePlots(bab_amps, output_dir, "ETHGogandAboboAmplicons.png", 
+          height=6, width=6)
+
+
+# What is the relatedness is term of mitochondrial DNA for Baby (dog, 2020), the 2 Gutok baboons (2022), the leopard (2019), and the serval (2023)? I know most have multiple non-sibling worms. 
+# All these worms were found in a small area (within ~20 km), and there is likely only one or two troops between Baby and the serval from known baboon movement.  
+baby <- dplyr::filter(eth, animal_name == "Baby") %>% .[['genomics_sample_id']]
+multiple_worm_ids <- dplyr::filter(eth, grepl("ETHBAB2022|ETHPPD2019|ETHWCT2023", genomics_sample_id)) %>% .[['genomics_sample_id']]
+filter_ids <- c(baby, multiple_worm_ids)
+df_cluster <- dplyr::filter(eth, genomics_sample_id %in% filter_ids)
+tmp_pair <- dplyr::filter(diff_eth, sample.x %in% df_cluster$sample & sample.y %in% df_cluster$sample) %>%
+  mutate(outline = ifelse(rmNA == 0, T, NA))
+related_joint <- related_and_missing_plot(tmp_pair, eval(sample_name), filter_min=filter_min)
+SavePlots(related_joint, output_dir, "ETHSmallAreaRelatedness.png", 
+          height=8, width=8)
+
+
 
 ################################################################################
 # South Sudan

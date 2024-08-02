@@ -21,7 +21,7 @@ def manifest_generate(fastq_path, output, key_file):
         if 'sample' and 'sample_number' not in key_file.columns.tolist():
             sys.exit("Sample key file does not contain sample_number (Qiagen match) and sample (rename) column(s). Update sample key file and try again.")
         
-        reads_df['sample_number'] = [int(x.split("-")[1].lstrip('0')) for x in r1_reads]
+        reads_df['sample_number'] = [int(x.split("-")[1].lstrip('0').split("_")[0]) for x in r1_reads]
         reads_df = key_file.merge(reads_df, on='sample_number')
     else:    
         print("Sample key file not provided. Proceeding.")
