@@ -106,7 +106,7 @@ vcf2haploid <- function(vcf){
   # remove batch information for duplicated samples
   colnames(tmp_vcf@gt) <- gsub("-batch.*" , "", colnames(tmp_vcf@gt))
   colnames(tmp_vcf@gt) <- gsub("-" , ".", colnames(tmp_vcf@gt))
-  tmp_vcf <- tmp_vcf[row.names(gt) %in% row.names(site_keep), ]
+  tmp_vcf <- tmp_vcf[row.names(gt) %in% row.names(site_keep_sing), ]
 
   # organize summary statistics for filtering
   summary_df <- data.frame(rbind(

@@ -1,14 +1,18 @@
 ################################################################################
 # Commonly used functions for Guinea worm genomic analyses
 # Author: Jessica Ribado - Institute for Disease Modeling 
-# Date: May 2023
+# Date: May 2023, updated February 2025
 ################################################################################
 
 ################################################################################
 # General
 ################################################################################
+SaveTabDelim <- function(r_obj, path){
+  write.table(r_obj, file = path, quote = F, row.names = F, sep="\t")
+}
+
+
 mutate_cond <- function(.data, condition, ..., new_init = NA, envir = parent.frame()) {
-  # Initialize any new variables as new_init
   new_vars <- substitute(list(...))[-1]
   new_vars %<>% sapply(deparse) %>% names %>% setdiff(names(.data))
   .data[, new_vars] <- new_init
@@ -19,66 +23,177 @@ mutate_cond <- function(.data, condition, ..., new_init = NA, envir = parent.fra
 }
 
 
-make_gradient <- function(deg = 45, n = 100, cols = blues9) {
-  cols <- colorRampPalette(cols)(n + 1)
-  rad <- deg / (180 / pi)
-  mat <- matrix(
-    data = rep(seq(0, 1, length.out = n) * cos(rad), n),
-    byrow = TRUE,
-    ncol = n
-  ) +
-    matrix(
-      data = rep(seq(0, 1, length.out = n) * sin(rad), n),
-      byrow = FALSE,
-      ncol = n
-    )
-  mat <- mat - min(mat)
-  mat <- mat / max(mat)
-  mat <- 1 + mat * n
-  mat <- matrix(data = cols[round(mat)], ncol = n)
-  grid::rasterGrob(
-    image = mat,
-    width = unit(1, "npc"),
-    height = unit(1, "npc"), 
-    interpolate = TRUE
-  )
-}
-
-
 ################################################################################
-# Relatedness functions
+# Pairwise distance functions
 ################################################################################
 HaversineDist <- function(gps_coords){
-  d0 <- geodist::geodist(dplyr::select(gps_coords, gps_e, gps_n) %>% 
+  d0 <- geodist::geodist(gps_coords %>% 
                            dplyr::rename(longitude = "gps_e", latitude = "gps_n"),
                          measure = "haversine")
-  colnames(d0) <- gps_coords$sample
-  row.names(d0) <- gps_coords$sample
-  return(d0)
+  colnames(d0) <- gps_coords$gps_id
+  row.names(d0) <- gps_coords$gps_id
+  
+  dist_df <- reshape2::melt(d0) %>% 
+    dplyr::rename(gps.x=Var1, gps.y=Var2, meters=value) %>%
+    dplyr::filter(gps.x != gps.y) %>%
+    rowwise() %>%
+    dplyr::mutate(gps_id_pair = paste(min(gps.x, gps.y), max(gps.x, gps.y), sep="_"))
+  
+  return(dist_df)  
 }
 
-grpid <- function(x) match(x, unique(x))
 
-gt2barcode <- function(vcf){
-  # get exact genotypes 
-  tmp_gt <- data.frame(extract.gt(vcf, element = "GT", return.alleles = TRUE))
+################################################################################
+# Pairwise metadata merging functions
+################################################################################
+PairwiseMetadataGroups <- function(df, dt){
+  # Uses vectorization of multiple columns to identify matches for groupings instead of dplyr/merging for speed. 
+  # Giving odd errors still on indexing values. Skip for now. 
+  compare_columns <- c("amplicon_barcode", "year", "host", "emergence_date", "gps_id")
+  lookup_tables <- lapply(setNames(compare_columns, compare_columns), function(i){
+    setNames(as.character(df[[i]]), df[["sample"]])
+  })
   
-  tmp_gt[is.na(tmp_gt)] <- "." 
-  sequences <- data.frame(sequence = apply(tmp_gt, 2, paste, collapse="")) %>%
-    tibble::rownames_to_column("sample") %>%
-    dplyr::group_by(sequence) %>% 
-    dplyr::mutate(group = group_indices(),
-                  frequency = n()) %>%
-    dplyr::arrange(desc(frequency), group) %>% ungroup() %>%          
-    dplyr::mutate(
-      amplicon_barcode = group %>% grpid,
-      amplicon = ifelse(frequency == 1, "Observed once",
-                        ifelse(frequency < 5, "Observed in < 5 samples",
-                               ifelse(frequency < 10, "Observed in < 10 samples", amplicon_barcode))))
+  for (lookup_name in names(lookup_tables)) {
+    lookup_vector <- lookup_tables[[lookup_name]]
+    new_col_name <- paste0(lookup_name, "_pair")  # Column name for the matched category
+    
+    # dt <- dt[, (paste0(lookup_name, ".x")) := lookup_vector[match(sample.x, names(lookup_vector))]]
+    # dt <- dt[, (paste0(lookup_name, ".y")) := lookup_vector[match(sample.y, names(lookup_vector))]]
+    
+    if(lookup_name %in% c("amplicon_barcode", "gps_id", "year")){
+      dt <- dt[, (new_col_name) := data.table::fcase(
+        lookup_vector[match(sample.x, names(lookup_vector))] == lookup_vector[match(sample.y, names(lookup_vector))], as.character(lookup_vector[match(sample.x, names(lookup_vector))]),
+        is.na(lookup_vector[match(sample.x, names(lookup_vector))]) | is.na(lookup_vector[match(sample.y, names(lookup_vector))]), "Missing data",
+        default = paste(pmin(lookup_vector[match(sample.x, names(lookup_vector))], lookup_vector[match(sample.y, names(lookup_vector))]),
+                      pmax(lookup_vector[match(sample.x, names(lookup_vector))], lookup_vector[match(sample.y, names(lookup_vector))]), sep="_")
+      )]
+    } else if(lookup_name == "emergence_date"){
+      dt <- dt[, (new_col_name) := abs(as.numeric(
+        difftime(lookup_vector[match(sample.x, names(lookup_vector))], lookup_vector[match(sample.y, names(lookup_vector))], 
+                 unit="days")))]
+      dt <- dt[, generation := data.table::fcase(
+        between(emergence_date_pair, 310, 410), "Within 10-14 mo",
+        default = "Unlikely or Unknown")]
+    } else{
+      dt <- dt[, (new_col_name) := data.table::fcase(
+        lookup_vector[match(sample.x, names(lookup_vector))] == lookup_vector[match(sample.y, names(lookup_vector))], as.character(lookup_vector[match(sample.x, names(lookup_vector))]),
+        is.na(lookup_vector[match(sample.x, names(lookup_vector))]) | is.na(lookup_vector[match(sample.y, names(lookup_vector))]), "Missing data",
+        default = "Mixed")]
+    }
+  } 
+  return(dt)
+}  
+
+
+SubsampleMerge <- function(df, diff_df = barcode_pairwise, split_variable = "year"){
   
-  return(sequences)
+  UniquePairsDiff <- function(df, unique_pairs){
+    # merge in pairwise metadata 
+    if(typeof(unique_pairs) %in% c("character", "matrix")){
+      unique_pairs <- t(unique_pairs)
+    } 
+    pairs_dt <- as.data.table(unique_pairs)
+    setnames(pairs_dt, c("V1", "V2"), c("sample.x", "sample.y"))
+    dt_meta <- PairwiseMetadataGroups(df, pairs_dt)
+
+    tmp_same_bc <- dt_meta[!grepl("_", amplicon_barcode_pair),]
+    tmp_same_bc <- tmp_same_bc[, `:=`(all = 0, rmNA = 0, missing = 0)]
+
+    tmp_diff_bc <- dt_meta[grepl("_", amplicon_barcode_pair),]
+    tmp_diff_bc <- merge(tmp_diff_bc, diff_df[ ,c("amplicon_barcode_pair", "all", "rmNA", "missing")], 
+                         by = "amplicon_barcode_pair", all.x=T, allow.cartesian = T)
+
+    pairs_df <- dplyr::bind_rows(tmp_same_bc, tmp_diff_bc)
+    rm(pairs_dt, dt_meta, tmp_same_bc, tmp_diff_bc)
+    
+    # Calculate Haversine distance for the samples in this set, add to dataset
+    gps_dist <- HaversineDist(unique(dplyr::select(df, gps_id, gps_e, gps_n)))
+    pairs_df <- merge(pairs_df, unique(dplyr::select(gps_dist, gps_id_pair, meters)),
+                      by = "gps_id_pair", all.x=T, allow.cartesian = T)
+
+    return(pairs_df)
+  }
+  
+  # Initialize a vector with elements
+  if(is.null(split_variable)){
+    print("Running all-by-all pairwise for specified samples.")
+    unique_pairs <- combn(df[['sample']], 2)
+    print(paste("Total pairwise comparisons:", ncol(unique_pairs)))
+    sample_pairwise <- UniquePairsDiff(df, unique_pairs)
+  } else{
+    # specify groups of pairs to run relatedness
+    sample_split <- split(df[["sample"]], df[[split_variable]])
+    
+    if(split_variable == "year"){
+      # run all-by-all specimen pairs within a year
+      within_years <- parallel::mclapply(names(sample_split), function(i){
+        if(length(sample_split[i][[1]]) > 1){
+          unique_pairs <- combn(sample_split[i][[1]], 2)
+          UniquePairsDiff(df, unique_pairs)
+        }
+      })
+      # check for prior year in data set, run all-by-all specimen pairs with the previous year
+      years_to_check = as.numeric(names(sample_split))
+      previous_years <- lapply(years_to_check, function(j){
+        if((j-1) %in% years_to_check){
+          year_pairs <- expand.grid(sample_split[as.character(j-1)][[1]],
+                                    sample_split[as.character(j)][[1]])
+          
+          names(year_pairs) <- c("V1", "V2")
+          UniquePairsDiff(df, year_pairs)
+        }
+      })
+    sample_pairwise <- dplyr::bind_rows(within_years, previous_years) 
+    rm(within_years, previous_years)
+    }
+  }
+  return(sample_pairwise)
+}
+  
+ 
+
+################################################################################
+# Summary statistic functions
+################################################################################
+# https://stackoverflow.com/questions/2748725/is-there-a-weighted-median-function
+weighted.median <- function(x, w, q=.5) {
+  n <- length(x)
+  i <- order(x)
+  w <- cumsum(w[i])
+  p <- w[n] * q
+  j <- findInterval(p, w)
+  Vectorize(function(p,j) if(w[n] <= 0) NA else
+    if(j < 1) x[i[1]] else
+      if(j == n) x[i[n]] else
+        if(w[j] == p) (x[i[j]] + x[i[j+1]]) / 2 else
+          x[i[j+1]])(p,j)
 }
 
+
+PairwiseWeightedSummary <- function(pairwise_df, by_year = FALSE){
+  pairwise_long <- dplyr::filter(pairwise_df, !is.na(rmNA)) %>%
+    dplyr::mutate(year_pair = ifelse(grepl("_", year_pair), "Mixed", year_pair)) %>%
+    dplyr::group_by(rmNA, !!sym(ifelse(by_year, "year_pair", ""))) %>%
+    dplyr::summarise(pairwise_count = n()) 
+  
+  pairwise_summary <- pairwise_long %>%
+    summarize(pairwise_sum = sum(pairwise_count),
+          weighted_mean = weighted.mean(1-rmNA, pairwise_count),
+          weighted_median = weighted.median(1-rmNA, pairwise_count),
+           # Variance formula: sum((weights * (values - weighted_mean)^2)) / sum(weights)
+           weighted_variance = sum(pairwise_count * (1-rmNA - weighted_mean)^2) / sum(pairwise_count),
+           weighted_sd = sqrt(weighted_variance))
+  return(list(weighted_diff = pairwise_long, 
+              summary_diff = pairwise_summary))
+}
+
+
+
+################################################################################
+# Deprecated - All-by-all relatedness functions
+################################################################################
+# Uses a matrix of all samples - slow
 PairwiseDifference <- function(gt_mat){
   diff_rmMissing <- ape::dist.gene(gt_mat, method="percentage", pairwise.deletion = TRUE)
   gt_sub <- gt_mat
@@ -90,7 +205,7 @@ PairwiseDifference <- function(gt_mat){
   # identify the indices of missing positions to count the number of excluded positions in a pair of sample
   na_pos <- lapply(setNames(rownames(gt_mat),rownames(gt_mat)), 
                    function(i) as.vector(which(is.na(gt_mat[i,]))))
-  diff_df$missing = MissingCountsV(na_pos, diff_df$Var1, diff_df$Var2)/ncol(gt_mat)
+  diff_df$missing = MissingCountsV(na_pos, diff_df$Var1, diff_df$Var2)
   diff_df <- dplyr::mutate_if(diff_df, is.numeric, round, digits=3)
   return(diff_df)
 } 
@@ -99,7 +214,7 @@ LowerMatrix <- function(matrix){
   if(class(matrix) != "matrix"){
     matrix <- as.matrix(matrix)
   }
-  matrix[lower.tri(matrix, diag = FALSE)] <- NA
+  matrix[upper.tri(matrix, diag = FALSE)] <- NA
   return(matrix)
 }
 
@@ -110,277 +225,18 @@ MissingCounts <- function(pos_list, sample1, sample2){
 MissingCountsV <- Vectorize(MissingCounts, vectorize.args = c("sample1", "sample2"))
 
 
-################################################################################
-# Plotting functions
-################################################################################
-
-################################################################################
-# colors
-
-# alleles
-allele_colors <- setNames(c("#800000FF", "#FFA319FF", "#8A9054FF", "#155F83FF", "#999999", "#000000"),
-                          c("A", "C", "G", "T", "Missing", '*'))
-
-# nextstrain barcodes
-base_colors <- c("#FF3200FF",  "#D12600", "#DB6A00", "#F9AB0EFF", "#FFED00FF", 
-                 "#B2FF2E", "#00AD00", "#019875FF", "#1BB6AFFF", "#32B2DAFF",
-                 "#0076BBFF", "#005B94", "#1E2085", "#610052", "#953272", 
-                 "#C70E7BFF", "#FC6882FF", "#FF847CFF")
-nextstrain_colors <- setNames(c(base_colors, 
-                                shades::saturation(base_colors, shades::scalefac(0.50)),
-                                shades::saturation(base_colors, shades::scalefac(0.20))),                                
-                                seq(1, length(base_colors)*3))
-reduced_base <- setNames(c("#D9C6B8", "#C2B0A3", "#836F65", "#52271CFF"), 
-                         c("Observed once", "Observed in < 5 samples", "Observed in < 10 samples", "Observed in < 20 samples")) 
-nextstrain_colors <- c(nextstrain_colors, reduced_base)
-
-# countries
-set.seed(15)
-# country_colors <- as.vector(paletteer_d("awtools::bpalette"))
-country_colors <- c('#4477AA', '#66CCEE', '#228833', '#CCBB44', '#EE6677', '#AA3377',
-  shades::saturation(c('#4477AA', '#66CCEE', '#228833', '#CCBB44', '#EE6677', '#AA3377'), shades::scalefac(0.60)))
-countries <- c("Chad", "Ethiopia", "Mali", "South Sudan", "Cameroon", "Angola", "Niger", "Sudan", "Cote d'Ivoire", "Central African Republic", "Burkina Faso", "Ghana")
-country_colors <- setNames(c(country_colors, "#666666"),
-  c(countries, "Different countries"))
-
-
-# hosts 
-host_colors <- setNames(c(rev(c("#6DAE90FF", "#CC3D24", "#999999", "#F3C558", "#088158", "#30B4CC", "#004F7A")), "#666666"),
-                        c("Human", "Dog", "Cat, domestic", "Cat, wild unknown spp.", "Baboon (Papio anubis)", "Leopard (Panthera pardus)", "Unknown", "Different hosts"))
-
-################################################################################
-# barcode
-position_reformat <- function(df, y_var){
-  gt_long <- gt[row.names(gt) %in% df$sample,] %>%
-    tibble::rownames_to_column("sample") %>%
-    dplyr::inner_join(dplyr::select(df, sample, y_var), .) %>%
-    tidyr::pivot_longer(cols = starts_with("ENA"), names_to = "position", values_to = "Allele") 
-  gt_long$Allele <- gt_long$Allele %>% replace_na('Missing') 
-  gt_long$Allele <- factor(gt_long$Allele, levels=c("A", "C", "G", "T", "Missing", '*'))
-  return(gt_long)
+AllPairwise <- function(vcf){
+  # Extract genotypes from the VCF file
+  tmp_gt <- data.frame(extract.gt(vcf, element = "GT", return.alleles = TRUE))
+  gt <- data.frame(t(tmp_gt))
+  names(gt) <- row.names(tmp_gt)
+  row.names(gt) <- names(tmp_gt)
+  genetic_diff <- PairwiseDifference(gt)
+  
+  diff_df <- unique(dplyr::left_join(genetic_diff, pairwise_dist)) %>%
+    mutate_cond(Var1==Var2, All=NA, rmNA=NA, missing=NA, meters=NA) %>%
+    dplyr::rename("sample.x"=Var1, "sample.y"=Var2)
+  
+  return(diff_df)
 }
 
-
-position_plot <- function(df, y_var){
-  order <- dplyr::arrange(df, frequency, amplicon_barcode) %>% .[[eval(y_var)]] %>% unique()
-  df_long <- position_reformat(df, eval(y_var)) 
-  
-  df_long %>% 
-    ggplot2::ggplot(aes(x=position, 
-                        #y=get(y_var),
-                        y=factor(get(y_var), levels=order), 
-                        fill=Allele)) +
-    geom_tile() +
-    scale_fill_manual(values = allele_colors) +
-    theme(axis.text.x=element_blank(), 
-          axis.ticks.x=element_blank(), 
-          axis.title.y=element_blank()) +
-    labs(x=paste0("Barcode (", length(unique(df_long$position)), " population identified variants)"))
-}
-
-################################################################################
-# epidemiological data
-
-
-################################################################################
-# relatedness matrices
-related_and_missing_plot <- function(df, sample_id="sample", filter_min=0){
-  df <- dplyr::mutate(df, id1 = get(paste0(sample_id, ".x")),
-                          id2 = get(paste0(sample_id, ".y")))
-  if(filter_min != 0){
-    df <- dplyr::filter(df, missing <= filter_min)
-  }
-  
-  if(sample_id != "sample"){
-    # placeholder for any potential missing information 
-    df <- dplyr::mutate(df, 
-                       id1= ifelse(is.na(id1), paste("No ID - worm", vassar_worm.x), id1),
-                       id2= ifelse(is.na(id2), paste("No ID - worm", vassar_worm.y), id2))
-    }
-    # keep order of the original sample names, to keep upper/lower matrices in the correct order
-    df_match <- rbind(dplyr::select(df, sample.x, id1) %>% rename(sample = sample.x, id = id1),
-                      dplyr::select(df, sample.y, id2) %>% rename(sample = sample.y, id = id2)) %>%
-      unique() %>%
-      dplyr::arrange(sample) %>%
-      dplyr::mutate(id = as.factor(id))
-
-  tmp_pair_related <- dplyr::select(df, id1, id2, rmNA) %>%
-    dplyr::rename("sample1" = id1, "sample2" = id2) %>%
-    dplyr::mutate(value = 1 - rmNA, 
-                  sample1 = factor(sample1, levels=df_match$id),
-                  sample2 = factor(sample2, levels=df_match$id))
-  # reverse order to fill in bottom matrix
-  tmp_pair_missing <- dplyr::select(df, id1, id2, missing) %>%
-    dplyr::rename("sample1" = id2, "sample2" = id1) %>%
-    dplyr::mutate(value = 1 - missing,
-                  sample1 = factor(sample1, levels=(df_match$id)),
-                  sample2 = factor(sample2, levels=(df_match$id)))
-  
-  p_matrix <- tmp_pair_related %>%
-    ggplot(aes(x=sample1, y=sample2)) +
-    geom_tile(aes(fill=value)) +
-    geom_tile(data=dplyr::filter(tmp_pair_related, rmNA == 0),
-              aes(x=sample1, y=sample2),
-              fill="transparent", colour="black", size=1) +
-    geom_text(aes(label = round(value, 3)), size=2) +
-    scale_fill_viridis_c(limits = c(0.75, 1), option = 'D', 
-                         name="Mitochondrial\ngenetic similarity\n(Excluding missing\npositions)") +
-    
-    # add the pairwise completeness
-    ggnewscale::new_scale_fill() + 
-    geom_tile(data = tmp_pair_missing, aes(fill = value)) +
-    geom_text(data = tmp_pair_missing, aes(label = round(value, 3)), size=2) +
-    scale_fill_viridis_c(limits = c(0.5, 1), option="magma", 
-                         name="Pairwise\ncompleteness\t\t")
-  
-  clean_matrix <- p_matrix +
-    theme(axis.title = element_blank(),
-          axis.text.x = element_text(angle = 35, hjust = 0)) + 
-    scale_x_discrete(expand = c(0, 0),position = 'top') +
-    coord_fixed()
-  
-  return(clean_matrix)
-}
-
-# relatedness distributions
-similarity_distributions <- function(df, similarity = "rmNA"){
-  x_axis <- ifelse(similarity == "All", 
-                   "mtDNA genetic similarity\n(Including missing positions for pairs of worms)", 
-                   "mtDNA genetic similarity\n(Excluding missing positions for pairs of worms)")
-  
-  p_dist <- df %>%
-    ggplot(aes(x=1-get(similarity), y= ..scaled.., fill=country_pair)) + 
-    geom_density(alpha=0.5) +
-    scale_fill_manual(values=country_colors) +
-    labs(x=x_axis, y="Scaled probability density", 
-         fill="Country of pairs of worms")
-  
-  g <- make_gradient(deg = 45, n = 200, cols = RColorBrewer::brewer.pal(9, "Greys")[1:5])
-  c_dist <- df %>% 
-    ggplot(aes(x=1-get(similarity))) + 
-    annotation_custom(grob = g, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
-    stat_ecdf(aes(color = country_pair)) +
-    scale_color_manual(values=country_colors) +
-    labs(x=x_axis, y="Cumulative density",
-         color="Country of pairs of worms") +
-    annotate(geom="text", label="Pairs are\nless related", x=0.75, y=0.95, color="black") +
-    annotate(geom="text", label="Pairs are\nmore related", x=0.95, y=0.10, color="black")
-  
-  density_p <- ggpubr::ggarrange(p_dist, c_dist, ncol=2, common.legend = T)
-  return(density_p)
-} 
-
-# spatial relatedness
-dist_by_sim_plot <- function(df){
-  df <- df  %>%
-    dplyr::mutate(year = as.character(year),
-                  has_gps = ifelse(!is.na(gps_n) & !is.na(gps_e), "Provided", "Missing"))
-  sample_counts <- df %>% ggplot(aes(x=year, y=..count.., fill=host)) +
-    geom_bar(color="black", size=0.5) +
-    scale_fill_manual(name="", values=host_colors) +
-    labs(title = "Species of host", x="Year", y="Sequenced specimens") +
-    theme(axis.text.x = element_text(angle = 30, hjust = 1))
-  coord_counts <- df %>% ggplot(aes(x=year, y=..count.., fill=has_gps)) +
-    geom_bar(color="black", size=0.5) +
-    scale_fill_manual(name="", values=c("ivory3", "seagreen3")) +
-    labs(title = "Specimens with GPS coordinates", x="Year", y="Sequenced specimens") +
-    theme(axis.text.x = element_text(angle = 30, hjust = 1))
-  bins <- dplyr::filter(diff_all, sample.x %in% df$sample & sample.y %in% df$sample) %>%
-    dplyr::mutate(year_diff=abs(as.numeric(year.x) - as.numeric(year.y)),
-                  year_diff=ifelse(year_diff == 0, "Same year",
-                                   ifelse(year_diff == 1, "Within one year", "> One year"))) %>%
-    ggplot(aes(x=meters/1000,y=1-rmNA)) + 
-    geom_point(aes(color=as.character(year_diff)), alpha=0.75) +
-    scale_colour_viridis_d(option = "inferno") +
-    #stat_binhex() +
-    # scale_fill_viridis_c(trans = "log", option = "inferno", na.value = "grey50") +
-    labs(x="Distance between pairs of worm samples\n(kilometers)",
-         y="Pairwise mtDNA genetic similarity\n(Excluding missing positions in barcode)",
-         fill="Number of pairwise\ncomparisons",
-         color="Years difference\nbetween pairs",
-         title="Association between pairwise distance\nand genetic similarity for pairs of worms") + 
-    theme(legend.position="bottom",
-          axis.text.x = element_text(angle = 30, hjust = 1))
-  p <- ggpubr::ggarrange(
-    ggpubr::ggarrange(sample_counts, coord_counts, nrow=2, align = "hv"), 
-    bins,
-    nrow=1
-  )
-  return(p)
-}  
-
-################################################################################
-# multipanel plots
-ClusterPlots <- function(df, cluster_id=NA, output_name=NA, filter_min=0, pairwise_df = diff_all, #sample_name="wormnum_dpdxid"
-                         sample_name = "sample"){
-  if(is.na(output_name)){
-    if(!is.na(cluster_id)){
-      output_name <-  paste0("cluster_", gsub(" |cluster", "", cluster_id))
-    } else{
-      output_name <- "unnamedSimilarity"
-    }
-  }
-  
-  print(paste("Checking", output_name))
-  # subset sampled in cluster
-  if(!is.na(cluster_id)){
-    df_cluster <- dplyr::filter(df, cluster == !!cluster_id)
-  } else {
-    df_cluster <- df
-  }
-  
-  if(nrow(df_cluster) > 2 & sum(!is.na(df_cluster$amplicon)) > 2){
-    # general metrics
-    host <- df_cluster %>% ggplot(aes(x=as.character(year), y=..count.., fill=host))+
-      geom_bar(colour="black") +
-      scale_fill_manual(values = host_colors, name="Host") +
-      labs(x="Year", y="Specimens") + 
-      theme(legend.position="top") +
-      ggtitle("")
-    barcodes <- df_cluster %>% ggplot(aes(x=as.character(year), y=..count.., fill=amplicon))+
-      geom_bar(colour="black") +
-      scale_fill_manual(values = nextstrain_colors,
-                        name="Nextstrain\ngroup") +
-      labs(x="Year", y="Specimens") + 
-      theme(legend.position="top") +
-      guides(fill=guide_legend(nrow=2, byrow=TRUE))
-    
-    general_joint <- ggpubr::ggarrange(host, barcodes, nrow = 2, widths = c(1,1), align="hv")
-    
-    # relatedness and missing-ness plots
-    tmp_pair <- dplyr::filter(pairwise_df, sample.x %in% df_cluster$sample & sample.y %in% df_cluster$sample) %>%
-      mutate(outline = ifelse(rmNA == 0, T, NA))
-    related_joint <- related_and_missing_plot(tmp_pair, eval(sample_name), filter_min=filter_min)
-    
-    # variant position plots
-    position <- position_plot(df_cluster, eval(sample_name))
-    
-    # all combined
-    plot_name <- paste0("Cluster ID: ", output_name, "\n", 
-                        "Narrative samples: ", nrow(df_cluster), "; Sequenced specimens: ", sum(!is.na(df_cluster$amplicon)))
-    plot <-  ggpubr::ggarrange(
-      ggpubr::ggarrange(general_joint, related_joint, ncol=2, widths = c(1,2)),
-      position, nrow=2, heights = c(2.75,1))
-    plot <- ggpubr::annotate_figure(plot, top = plot_name)
-    
-    # save plot
-    plot_height <- ifelse(nrow(df_cluster) <= 15, 8, 21) 
-    plot_width <- ifelse(nrow(df_cluster) <= 15, 10, 26)
-    SavePlots(plot, output_dir, paste0(output_name, ".png"), height=plot_height, width=plot_width)
-    
-    potential_outliers <- "Exit"
-  } else{
-    potential_outliers <- "Skipped"
-  }
-  return(potential_outliers)
-} 
-
-
-################################################################################
-# saving
-SavePlots <- function(ggplot_obj, plot_path, name, width=8, height=4){
-  ggsave(paste0(format(Sys.time(), "%Y%m%d"), "_", name), 
-         plot = ggplot_obj,
-         path = plot_path,
-         width = width, height = height, units = c("in"), dpi = 72)
-}
