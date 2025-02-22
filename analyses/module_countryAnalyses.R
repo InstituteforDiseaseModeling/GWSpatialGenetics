@@ -53,9 +53,9 @@ getScriptPath <- function(){
   return(script.dir)
 }
 
-#script_dir <- getScriptPath()
-setwd('/home/jribado/git/GWSpatialGenetics/analyses')
-script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
+script_dir <- getScriptPath()
+# setwd('/home/jribado/git/GWSpatialGenetics/analyses')
+# script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 source(paste(script_dir, "mtDNA_common_functions.R", sep="/"))
 source(paste(script_dir, "mtDNA_plotting.R", sep="/"))
 

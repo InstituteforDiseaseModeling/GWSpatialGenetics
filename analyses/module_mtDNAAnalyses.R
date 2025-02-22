@@ -61,9 +61,9 @@ getScriptPath <- function(){
   return(script.dir)
 }
 
-# script_dir <- getScriptPath()
-setwd('/home/jribado/git/GWSpatialGenetics/analyses')
-script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
+script_dir <- getScriptPath()
+# setwd('/home/jribado/git/GWSpatialGenetics/analyses')
+# script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 source(paste(script_dir, "module_checkMetadata.R", sep="/"))
 source(paste(script_dir, "module_vcfdiploid2haploid.R", sep="/"))
 source(paste(script_dir, "module_barcodeFunctions.R", sep="/"))
@@ -74,8 +74,8 @@ source(paste(script_dir, "mtDNA_plotting.R", sep="/"))
 # plotitng options
 theme_set(theme_bw())
 
-diploid_vcf = '/mnt/data/guinea_worm/processing/vcf_files/batch_Dec052024_jointGenotypeFiltered.vcf.gz'
-metadata_file = '/mnt/data/guinea_worm/metadata/GenomicsSamplesMetadata_Database_v4.2_250127.rds'
+# diploid_vcf = '/mnt/data/guinea_worm/processing/vcf_files/batch_Dec052024_jointGenotypeFiltered.vcf.gz'
+# metadata_file = '/mnt/data/guinea_worm/metadata/GenomicsSamplesMetadata_Database_v4.2_250127.rds'
 
 # update parser if running in manual mode
 if(is.null(opt$diploid_vcf)){
