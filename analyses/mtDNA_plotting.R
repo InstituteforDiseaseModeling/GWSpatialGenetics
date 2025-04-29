@@ -74,15 +74,18 @@ country_colors <- setNames(c(country_colors, "#666666", "#666666"),
 
 
 # hosts 
-host_colors <- setNames(c("#004F7A", "#30B4CC", "#F3C558", 
-                          "#C2D6A4FF", "#9CC184FF", "#669D62FF", "#3C7C3DFF", "#1F5B25FF", "#1E3D14FF", #"#192813FF")
-                          "#C0431FFF",
+host_colors <- setNames(c("#004F7A", "#30B4CC", "#BFEFFF", "#F3C558", "#FFA500",
+                          "#C2D6A4FF", "#9CC184FF", "#669D62FF", "#3C7C3DFF", "#1F5B25FF", "#1E3D14FF", "#192813FF",
+                          "#C0431FFF", "#A0522D",
+                          "#FAEBD7",
                           "#999999", "#666666", "#666666"),
-                        c("Human", "Baboon (Papio anubis)", "Dog", 
-                          "Cat (domestic)", "Cat (wild unknown spp.)", "Civet", "Genet", "Leopard (Panthera pardus)", "Serval",
-                          "Equine (donkey etc)", 
+                        c("Human", "Baboon (Papio Anubis)", "Primate (Non-Baboon Non-Human Species)", "Dog", "Wild Canid (Jackal Etc.)",
+                          "Cat (Domestic)", "Cat (Wild Unknown Spp.)", "Civet", "Genet", "Leopard (Panthera Pardus)", "Serval", "African Wild Cat",
+                          "Equine (Donkey Etc)", "Antelopinae (Gazelles Antelopes Etc)",
+                          "Lab Ferret",
                           "Unknown", "Different hosts", "Mixed"))
 
+       
 
 ################################################################################
 # Barcode quality plots
@@ -267,7 +270,8 @@ DynamicPlotDimensions <- function(column, num_entries, num_facets){
 
 BarcodeCountPlots <- function(df, column = "year", 
                               ggplot_title = NULL, 
-                              facet_variable = NULL){
+                              facet_variable = NULL, 
+                              input_width=NULL, input_height=NULL){
     
   base_p <- function(p_df = df, column, facet = facet_variable){
     title_base = "Maternal lineages by barcode"
@@ -296,7 +300,7 @@ BarcodeCountPlots <- function(df, column = "year",
   ggplot_title = ifelse(is.null(ggplot_title), PlotTitle(df), ggplot_title)
   
   if(column == "year"){
-    time_seq <- seq(min(df[[column]]), max(df[[column]]))
+    time_seq <- seq(min(df[[column]], na.rm = T), max(df[[column]], na.rm = T))
     p <- base_p(column = sym(column)) +
       scale_x_continuous(breaks = c(time_seq)) +
       labs(x="Emergence year")
@@ -311,7 +315,13 @@ BarcodeCountPlots <- function(df, column = "year",
   }
   
   num_facets <- if (!is.null(facet_variable)) dplyr::n_distinct(df[[facet_variable]]) else 1
-  output_size <- DynamicPlotDimensions(sym(column), nrow(df), num_facets)
+  if(is.null(input_width) | is.null(input_height)){
+    output_size <- DynamicPlotDimensions(sym(column), nrow(df), num_facets)
+  } else{
+    output_size <- list()
+    output_size$width = input_width
+    output_size$height = input_height
+  }
   output_name <- ifelse(is.null(ggplot_title), paste("Unnamed", format(Sys.time(), "%H:%M:%S"), sep="-"), ggplot_title)
   output_name = paste(gsub(" ", "", output_name), gsub("emergence_date_", "", column), sep="_")
   SavePlots(p, output_dir, paste(output_name, "barcodeCounts.png", sep="_"),
@@ -574,7 +584,7 @@ VariableDistributionPlot <- function(df, dt, variable,
   dist_p <- dt %>%
     dplyr::filter(!grepl("Missing", !!sym(pair_variable))) %>%
     ggplot(aes(x=1-rmNA, color=!!sym(pair_variable))) +
-    stat_slab(alpha = .3) +
+    ggdist::stat_slab(alpha = .3) +
     stat_pointinterval(position = position_dodge(width = .4, preserve = "single")) +
     labs(
       x="Mitochondrial genetic similarity\n(Excluding missing positions)",

@@ -43,9 +43,9 @@ host_codes <- rbind.data.frame(
   c("Dog", "DOG"),
   c("Human", "HUM"),
   c("Cat (domestic)", "CAT"),
-  c("Leopard (Panthera pardus)", "PPD"),
+  c("Leopard (Panthera Pardus)", "PPD"),
   c("Cat (wild unknown spp.)", "WCT"),
-  c("Baboon (Papio anubis)", "BAB"),
+  c("Baboon (Papio Anubis)", "BAB"),
   c("Unknown", "UNK"),
   c("Unknown", "Unknown"))
 names(host_codes) <- c("host", "host_code")

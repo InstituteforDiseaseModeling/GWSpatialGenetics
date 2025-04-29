@@ -22,12 +22,12 @@ gt2barcode <- function(vcf){
     dplyr::group_by(sequence) %>% 
     dplyr::mutate(!!missing_var := stringr::str_count(sequence, "X"),
                   group = group_indices(),
-                  frequency = n(), 
+                  frequency_conservative = n(), 
                   analysis_inclusion = ifelse(get(missing_var) >= floor(nrow(tmp_gt) * opt$filt_prop), "Excluded", "Included")) %>%
-    dplyr::arrange(desc(frequency), group) %>% ungroup() %>%          
+    dplyr::arrange(desc(frequency_conservative), group) %>% ungroup() %>%          
     dplyr::mutate(
       vassar_worm = gsub("^[^_]*_|.batch.*", "", sample),
-      amplicon_barcode = group %>% grpid)
+      amplicon_barcode_conservative = group %>% grpid)
   
   return(sequences)
 }
@@ -50,6 +50,7 @@ AssignAmpliconGrouping <- function(df, group_variable = "amplicon_barcode"){
     dplyr::group_by(!!! rlang::syms(group_variable)) %>%
     dplyr::mutate(frequency = n(),
       amplicon = case_when(
+        is.na(amplicon_barcode) ~ "Missing sequence",
         confidence == "Excluded" ~ "Excluded",
         (complete_regroup == "Yes" | confidence != "Lower confidence") & frequency >= 10 ~ paste(!!! rlang::syms(group_variable)),
         (complete_regroup == "Yes" | confidence != "Lower confidence") & frequency == 1 ~ "Observed once",
@@ -238,7 +239,7 @@ BarcodeAmbiguity <- function(l, pairwise_matrix , match_barcodes = complete_barc
   complete_pairwise_scores <- complete_pairwise_scores[!is.na(complete_pairwise_scores) & names(complete_pairwise_scores) %in% match_barcodes]
   potential_match_list <- names(complete_pairwise_scores)[complete_pairwise_scores == 0]
   
-  stats = list(amplicon_barcode = l, 
+  stats = list(amplicon_barcode_conservative = l, 
                ambiguous = ifelse(length(potential_match_list) == 0, NA,
                                   ifelse(length(potential_match_list) == 1, "No", "Yes")),
                potential_barcode_matches = case_when(
@@ -251,13 +252,13 @@ BarcodeAmbiguity <- function(l, pairwise_matrix , match_barcodes = complete_barc
 }
 
 
-ManualBarcodeRecode <- function(barcodes, pairs = barcode_pairwise){
-  complete_barcodes <- dplyr::filter(barcodes, get(missing_count_variable) == 0) %>% .[['amplicon_barcode']]
+ManualBarcodeRecode <- function(barcodes){
+  complete_barcodes <- dplyr::filter(barcodes, get(missing_count_variable) == 0) %>% .[['amplicon_barcode_conservative']]
   missing_barcodes  <- dplyr::filter(barcodes, get(missing_count_variable) != 0 & 
-                                       get(missing_count_variable) < floor(n_variants * opt$filt_prop)) %>% .[['amplicon_barcode']]
+                                       get(missing_count_variable) < floor(n_variants * opt$filt_prop)) %>% .[['amplicon_barcode_conservative']]
   
   # matrix version of relatedness for faster checking of relatedness
-  m <- reshape2::acast(pairs, amplicon_barcode.x ~ amplicon_barcode.y, value.var="rmNA")
+  m <- reshape2::acast(barcode_pairwise, amplicon_barcode_conservative.x ~ amplicon_barcode_conservative.y, value.var="rmNA")
   
   # Idea - for barcodes with less than 10% of positions missing, check that all pairs in grouping have similarity of 0. 
   # If so, merge as new group to reduce singletons
@@ -270,7 +271,7 @@ ManualBarcodeRecode <- function(barcodes, pairs = barcode_pairwise){
   
   exclude_refactor <- unlist(lapply(check_refactor, function(j){
     refactor_tmp <- dplyr::filter(refactor_df, potential_barcode_matches == !!j)
-    pairwise_tmp <- m[row.names(m) %in% refactor_tmp$amplicon_barcode,colnames(m) %in% refactor_tmp$amplicon_barcode]
+    pairwise_tmp <- m[row.names(m) %in% refactor_tmp$amplicon_barcode_conservative ,colnames(m) %in% refactor_tmp$amplicon_barcode_conservative]
     non_zero_pairs <- sum(pairwise_tmp[pairwise_tmp > 0], na.rm = TRUE)
     if(non_zero_pairs != 0){
       return(j)
@@ -279,7 +280,6 @@ ManualBarcodeRecode <- function(barcodes, pairs = barcode_pairwise){
   refactor_unambiguous <- dplyr::filter(refactor_unambiguous, !potential_barcode_matches %in% exclude_refactor)
   
   df <- dplyr::left_join(barcodes, refactor_unambiguous) %>%
-    rename(amplicon_barcode_conservative = amplicon_barcode, frequency_conservative = frequency) %>%
     dplyr::mutate(amplicon_barcode = case_when(
       get(missing_count_variable) == 0 | is.na(ambiguous) ~ as.character(amplicon_barcode_conservative),
       ambiguous == "No" ~ as.character(potential_barcode_matches),

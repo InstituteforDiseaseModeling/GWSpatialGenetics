@@ -112,7 +112,7 @@ vcf2haploid <- function(vcf){
   summary_df <- data.frame(rbind(
     "Diploid VCF  " = basename(diploid_vcf),
     "Samples (All) " = ncol(vcf@gt),
-    "Samples (Exluding technical replicates) " = ncol(vcf@gt) - length(dup_samples),
+    "Samples (Excluding technical replicates) " = ncol(vcf@gt) - length(dup_samples),
     "Variants " = nrow(het_hap),
     "Minimum genotype ready depth " = min_gt_depth,
     "Heterozygous recode proportion " = paste(1 - het_proportion, het_proportion, sep=","),

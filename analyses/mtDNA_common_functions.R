@@ -49,7 +49,8 @@ HaversineDist <- function(gps_coords){
 PairwiseMetadataGroups <- function(df, dt){
   # Uses vectorization of multiple columns to identify matches for groupings instead of dplyr/merging for speed. 
   # Giving odd errors still on indexing values. Skip for now. 
-  compare_columns <- c("amplicon_barcode", "year", "host", "emergence_date", "gps_id")
+  compare_columns <- c("amplicon_barcode_conservative", "year", "host", "emergence_date", "gps_id")
+  compare_columns <- compare_columns[compare_columns %in% names(df)]
   lookup_tables <- lapply(setNames(compare_columns, compare_columns), function(i){
     setNames(as.character(df[[i]]), df[["sample"]])
   })
@@ -57,16 +58,16 @@ PairwiseMetadataGroups <- function(df, dt){
   for (lookup_name in names(lookup_tables)) {
     lookup_vector <- lookup_tables[[lookup_name]]
     new_col_name <- paste0(lookup_name, "_pair")  # Column name for the matched category
-    
+
     # dt <- dt[, (paste0(lookup_name, ".x")) := lookup_vector[match(sample.x, names(lookup_vector))]]
     # dt <- dt[, (paste0(lookup_name, ".y")) := lookup_vector[match(sample.y, names(lookup_vector))]]
     
-    if(lookup_name %in% c("amplicon_barcode", "gps_id", "year")){
+    if(lookup_name %in% c("amplicon_barcode_conservative", "gps_id", "year")){
       dt <- dt[, (new_col_name) := data.table::fcase(
         lookup_vector[match(sample.x, names(lookup_vector))] == lookup_vector[match(sample.y, names(lookup_vector))], as.character(lookup_vector[match(sample.x, names(lookup_vector))]),
         is.na(lookup_vector[match(sample.x, names(lookup_vector))]) | is.na(lookup_vector[match(sample.y, names(lookup_vector))]), "Missing data",
-        default = paste(pmin(lookup_vector[match(sample.x, names(lookup_vector))], lookup_vector[match(sample.y, names(lookup_vector))]),
-                      pmax(lookup_vector[match(sample.x, names(lookup_vector))], lookup_vector[match(sample.y, names(lookup_vector))]), sep="_")
+        default = paste(pmin(as.numeric(lookup_vector[match(sample.x, names(lookup_vector))]), as.numeric(lookup_vector[match(sample.y, names(lookup_vector))])),
+                        pmax(as.numeric(lookup_vector[match(sample.x, names(lookup_vector))]), as.numeric(lookup_vector[match(sample.y, names(lookup_vector))])), sep="_")
       )]
     } else if(lookup_name == "emergence_date"){
       dt <- dt[, (new_col_name) := abs(as.numeric(
@@ -97,21 +98,22 @@ SubsampleMerge <- function(df, diff_df = barcode_pairwise, split_variable = "yea
     setnames(pairs_dt, c("V1", "V2"), c("sample.x", "sample.y"))
     dt_meta <- PairwiseMetadataGroups(df, pairs_dt)
 
-    tmp_same_bc <- dt_meta[!grepl("_", amplicon_barcode_pair),]
+    tmp_same_bc <- dt_meta[!grepl("_", amplicon_barcode_conservative_pair),]
     tmp_same_bc <- tmp_same_bc[, `:=`(all = 0, rmNA = 0, missing = 0)]
 
-    tmp_diff_bc <- dt_meta[grepl("_", amplicon_barcode_pair),]
-    tmp_diff_bc <- merge(tmp_diff_bc, diff_df[ ,c("amplicon_barcode_pair", "all", "rmNA", "missing")], 
-                         by = "amplicon_barcode_pair", all.x=T, allow.cartesian = T)
+    tmp_diff_bc <- dt_meta[grepl("_", amplicon_barcode_conservative_pair),]
+    tmp_diff_bc <- merge(tmp_diff_bc, diff_df[ ,c("amplicon_barcode_conservative_pair", "all", "rmNA", "missing")], 
+                         by = "amplicon_barcode_conservative_pair", all.x=T, allow.cartesian = T)
 
     pairs_df <- dplyr::bind_rows(tmp_same_bc, tmp_diff_bc)
     rm(pairs_dt, dt_meta, tmp_same_bc, tmp_diff_bc)
     
     # Calculate Haversine distance for the samples in this set, add to dataset
-    gps_dist <- HaversineDist(unique(dplyr::select(df, gps_id, gps_e, gps_n)))
-    pairs_df <- merge(pairs_df, unique(dplyr::select(gps_dist, gps_id_pair, meters)),
-                      by = "gps_id_pair", all.x=T, allow.cartesian = T)
-
+    if(!all(is.na(df$gps_e))){
+      gps_dist <- HaversineDist(unique(dplyr::select(df, gps_id, gps_e, gps_n)))
+      pairs_df <- merge(pairs_df, unique(dplyr::select(gps_dist, gps_id_pair, meters)),
+                        by = "gps_id_pair", all.x=T, allow.cartesian = T)
+    }
     return(pairs_df)
   }
   

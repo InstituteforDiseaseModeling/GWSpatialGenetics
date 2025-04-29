@@ -43,7 +43,7 @@ packages_to_install <- c('Rcpp', 'parallel', 'vcfR', 'geodist', 'lubridate',
                          'ggplot2', 'ggpubr', 'iNEXT')
 for(p in packages_to_install){
   if(!p %in% installed.packages()[,1]){
-    install.packages(p, repos = "http://cran.us.r-project.org")
+    install.packages(p, repos = "http://cran.us.r-project.org") 
     library(p, character.only = TRUE)
   }
   library(p, character.only = TRUE)
@@ -61,9 +61,9 @@ getScriptPath <- function(){
   return(script.dir)
 }
 
-script_dir <- getScriptPath()
-# setwd('/home/jribado/git/GWSpatialGenetics/analyses')
-# script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
+# script_dir <- getScriptPath()
+setwd('/home/jribado/git/GWSpatialGenetics/analyses')
+script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 source(paste(script_dir, "module_checkMetadata.R", sep="/"))
 source(paste(script_dir, "module_vcfdiploid2haploid.R", sep="/"))
 source(paste(script_dir, "module_barcodeFunctions.R", sep="/"))
@@ -74,8 +74,8 @@ source(paste(script_dir, "mtDNA_plotting.R", sep="/"))
 # plotitng options
 theme_set(theme_bw())
 
-# diploid_vcf = '/mnt/data/guinea_worm/processing/vcf_files/batch_Dec052024_jointGenotypeFiltered.vcf.gz'
-# metadata_file = '/mnt/data/guinea_worm/metadata/GenomicsSamplesMetadata_Database_v4.2_250127.rds'
+diploid_vcf = '/mnt/data/guinea_worm/processing/vcf_files/batch_Apr042025_jointGenotypeFiltered.vcf.gz'
+metadata_file = '/mnt/data/guinea_worm/metadata/GenomicSamplesMetadata_Database_v4.2_250326.rds'
 
 # update parser if running in manual mode
 if(is.null(opt$diploid_vcf)){
@@ -129,8 +129,7 @@ metadata <- run_metadata_checks(metadata,
                                 vcf_samples = vcf_numbers, 
                                 excluded_samples = hap_vcf$missing_df)
 metadata <- dplyr::left_join(metadata, vcf_clust) %>%
-  dplyr::mutate(epi_foci = ifelse(epi_foci == "", NA, gsub(" focal area", "", epi_foci))) %>%
-  dplyr::group_by()
+  dplyr::mutate(epi_foci = ifelse(epi_foci == "", NA, gsub(" focal area", "", epi_foci)))
 
 
 # save VCF files and filter for other analyses 
@@ -147,13 +146,13 @@ rm(vcf)
 unique_sequences <- names(sort(table(metadata[['sequence']]), decreasing = T))
 barcode_pairwise <- BarcodePairwiseParallel(unique_sequences)
 barcode_pairwise <- barcode_pairwise %>%  
-  dplyr::inner_join(., unique(dplyr::select(metadata, sequence, amplicon_barcode)) %>% dplyr::rename(sequence.x=sequence), by="sequence.x") %>%
-  dplyr::inner_join(., unique(dplyr::select(metadata, sequence, amplicon_barcode)) %>% dplyr::rename(sequence.y=sequence), by="sequence.y") 
+  dplyr::inner_join(., unique(dplyr::select(metadata, sequence, amplicon_barcode_conservative)) %>% dplyr::rename(sequence.x=sequence), by="sequence.x") %>%
+  dplyr::inner_join(., unique(dplyr::select(metadata, sequence, amplicon_barcode_conservative)) %>% dplyr::rename(sequence.y=sequence), by="sequence.y") 
 
 barcode_pairwise <- dplyr::rowwise(barcode_pairwise) %>%
-  dplyr::mutate(amplicon_barcode_pair = paste(min(amplicon_barcode.x, amplicon_barcode.y), 
-                                              max(amplicon_barcode.x, amplicon_barcode.y), 
-                                       sep="_"))
+  dplyr::mutate(amplicon_barcode_conservative_pair = 
+                  paste(min(amplicon_barcode_conservative.x, amplicon_barcode_conservative.y), 
+                        max(amplicon_barcode_conservative.x, amplicon_barcode_conservative.y), sep="_"))
 SaveTabDelim(barcode_pairwise, paste0(output_dir, "/", batch_name, "_relatednessBarcodes.txt"))
 
 
@@ -163,15 +162,12 @@ SaveTabDelim(barcode_pairwise, paste0(output_dir, "/", batch_name, "_relatedness
 missing_count_variable = names(metadata)[grepl("missing_n_", names(metadata))]
 n_variants <- readr::parse_number(missing_count_variable)
 
-barcodes <- unique(dplyr::select(vcf_clust, amplicon_barcode, sequence, frequency, eval(missing_count_variable))) %>%
+barcodes <- unique(dplyr::select(vcf_clust, amplicon_barcode_conservative, sequence, frequency_conservative, eval(missing_count_variable))) %>%
   dplyr::filter(!is.na(sequence)) 
 complete_barcodes <- dplyr::filter(barcodes, get(missing_count_variable) == 0) %>% .[['amplicon_barcode']]
 updated_barcodes <- ManualBarcodeRecode(barcodes) 
 # update metadata to include new non-ambiguous groupings
-metadata <- dplyr::rename(metadata, 
-                          amplicon_barcode_conservative = amplicon_barcode, 
-                          frequency_conservative = frequency) %>%
-  dplyr::inner_join(., updated_barcodes) %>%
+metadata <- dplyr::inner_join(metadata, updated_barcodes) %>%
   dplyr::mutate(complete_regroup = ifelse(amplicon_barcode %in% complete_barcodes, "Yes", "No")) %>%
   AssignAmpliconGrouping(.) %>% ungroup()
 
@@ -234,6 +230,7 @@ SavePlots(BarcodeByCountryPlot(metadata),
 
 # by country barcodes
 barcode_countries <- names(table(metadata$country))[table(metadata$country) > 5]
+barcode_countries <- barcode_countries[barcode_countries != ""]
 lapply(barcode_countries, function(i){
   BarcodeCountPlots(dplyr::filter(metadata, country == !!i))
   BarcodeCountPlots(dplyr::filter(metadata, country == !!i), column="month")
@@ -263,10 +260,41 @@ SaveTabDelim(potential_links_specimens, paste0(output_dir, "/", batch_name, "_Co
 ################################################################################
 country_diff <- parallel::mclapply(setNames(barcode_countries, barcode_countries), function(i){
   diff <- SubsampleMerge(dplyr::filter(metadata, country == !!i & analysis_inclusion == "Included"))
-}, mc.cores = 6) 
+}, mc.cores = 8) 
 saveRDS(country_diff, file = paste0(output_dir, "/", batch_name, "_CountryPairwiseLists.rds"))
 
 relatedness_summary <- lapply(country_diff, PairwiseWeightedSummary)
 relatedness_df <- dplyr::bind_rows(lapply(relatedness_summary,"[[",1), .id="country_pair")  
 SavePlots(similarity_distributions(relatedness_df), output_dir, "relatednessDensityMerge.png")
 
+
+################################################################################
+# Lab strain samples
+################################################################################
+lab_samples <- as.data.table(dplyr::filter(metadata, grepl("LAB", sample))) 
+diff_lab <- SubsampleMerge(lab_samples, split_variable = NULL) 
+SavePlots(related_and_missing_plot(diff_lab, "sample"), 
+          output_dir, "lab_ClusterMatrices.png", width=6, height=5.5)
+
+
+
+################################################################################
+# Characterize BQSR contributing samples - Manual run 
+################################################################################
+# ids <- data.table::fread("/mnt/data/guinea_worm/bsqr_hq_samples.txt", header = F)
+# 
+# # Regex to extract parts: 3 letters, 3 letters, 4 digits (year)
+# matches <- str_match(ids$V1, "^([A-Z]{3})([A-Z]{3})?(\\d{4})")
+# 
+# # Create data frame
+# result <- data.frame(
+#   full_id = ids,
+#   sample_id = gsub("-.*", "", ids$V1),
+#   country_code = matches[,2],
+#   host_code = matches[,3],
+#   year = matches[,4],
+#   stringsAsFactors = FALSE
+# ) %>%
+#   dplyr::filter(country_code != "BAT")
+# unique(result$sample_id) %>% length()    # N specimens
+# table(result$country_code, result$year)  # Country specimen counts
