@@ -38,7 +38,7 @@ Given the hypothesized low mitochondrial mutation rate in D. medinensis based on
 
 * Filtering the GATK variants for analyses will vary by sequencing batch, the table above can vary significantly based on the thresholds set for retaining variants based on the library size. 
 
-* Thresholds for site inclusion for the barcode, confidence bins for reassignment, and exclusion are a suggestion but more variation in barcodes can be achieved by lowering or raising each. The thresholds now are meant to balance the full library, but country specific
+* Thresholds for site inclusion for the barcode, confidence bins for reassignment, and exclusion are a suggestion but more variation in barcodes can be achieved by lowering or raising each. The thresholds now are meant to balance the full library, but country specific thresholds could be considered for other research questions. 
 
 
 ## References
