@@ -17,13 +17,16 @@ variants (ex. malaria), this pipeline is essentially equivalent to Johannes'.
 ################################################################################
 #  call python modules and functions
 include: "scripts/wgs_functions.smk"
-include: "scripts/reference_index.smk"
 # include: "scripts/gem_mask.smk"
-include: "scripts/qc.smk"
-include: "scripts/alignment.smk"
-include: "scripts/primer_check.smk"
-include: "scripts/variant_calling_gvcf.smk"
-include: "scripts/variant_calling_gvcf_knownVariants.smk"
+if isfile(VARIANT_FILE):
+    include: "scripts/reference_index.smk"
+    include: "scripts/qc.smk"
+    include: "scripts/alignment.smk"
+    include: "scripts/primer_check.smk"
+    include: "scripts/variant_calling_gvcf_knownVariants.smk"
+    include: "scripts/merge_batch_replicates.smk"
+else:
+    include: "scripts/variant_calling_gvcf_discovery.smk"
 include: "scripts/joint_calling.smk"
 include: "scripts/variant_filtering.smk"
 
