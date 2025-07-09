@@ -1,0 +1,44 @@
+name: ngs_align_updated
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # CORE RUNTIME
+  - python>=3.8
+  - openjdk=17
+
+  # SOLVER
+  - mamba
+
+  # WORKFLOW
+  - snakemake>=6.0
+
+  # BIO TOOLS
+  - gatk4=4.6.*
+  - picard
+  - bwa
+  - samtools
+  - bedtools
+  - vcftools
+  - bcftools
+  - trim-galore
+  - fastqc
+  - multiqc
+  - seqkit
+
+  # R STACK
+  - r-base>=4.1.2
+  - r-rlang>=1.0.0
+  - r-ggplot2>=3.3.5
+  - r-dplyr
+  - r-tidyr
+  - r-purrr
+  - r-ggpubr
+  - r-knitr
+  - r-gsalib
+  - r-rmarkdown
+  - r-tinytex
+
+  # PYTHON LIBS
+  - numpy
+  - pandas
