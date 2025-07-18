@@ -26,7 +26,10 @@ rule calculate_apply_known_base_recalibration:
 rule check_base_known_recalibration:
     input: rules.calculate_apply_known_base_recalibration.output.table
     output: join(PARENT_DIR, BATCH_NAME, "out", "02_align", "recalibrate", "summary", "{sample}_known_bqsrCovariates.pdf")
+    params: 
+        output_dir = join(PARENT_DIR, "{batch}", "out", "02_align", "recalibrate", "summary")
     shell: """
+        mkdir -p {params.output_dir}
         gatk AnalyzeCovariates \
             -bqsr {input} \
             -plots {output}

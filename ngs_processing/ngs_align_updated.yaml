@@ -38,6 +38,7 @@ dependencies:
   - r-gsalib
   - r-rmarkdown
   - r-tinytex
+  - r-gplots
 
   # PYTHON LIBS
   - numpy
