@@ -41,7 +41,7 @@ A customizable script has been included to generate a metadata file from a direc
 Note: Relevant sample information is in the Cornell name, sample key file is not required. 
 
 ```
-mamba activate ngs_align_updated
+conda activate ngs_align_updated
 $GIT='/path/to/git/clone/ngs_processing'
 snakemake -s $GIT/scripts/generate_manifest.smk --config fastq_dir='/path/to/raw_reads_dir' output_file='/path/to/metadata.tsv' sample_key='/path/to/sample_key.csv'
 ```
@@ -59,7 +59,7 @@ You can now run all steps of the pipeline with a single command. This command wi
 The script currently assumes that `"batch_{.?}"` is the structure of individual batch names. The output files will be nested in an `out/` directory (will not duplicate this pattern if specified in the config output path). The parent directory for the project is specified as the directory structure before `batch_{.?}`. If the user wishes to to add further nesting to output file, the update must be made in `wgs_functions.smk` on line 21.  
 
 ```
-mamba activate ngs_align_updated
+conda activate ngs_align_updated
 $GIT='/path/to/git/clone/ngs_processing'
 snakemake -s $GIT/gw_processing.snakefile --configfile path/to/project/yaml/config_example.yaml --cores 8 --jobs 8 -R check_samples
 ```

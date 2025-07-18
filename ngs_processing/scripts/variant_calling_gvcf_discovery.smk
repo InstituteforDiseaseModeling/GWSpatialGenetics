@@ -222,7 +222,10 @@ rule check_base_discovery_recalibration:
         initial_recal = join(PARENT_DIR, "{batch}", "out", "02_align", "recalibrate", "bsqr_1", "{sample}.table"),
         final_recal   = join(PARENT_DIR, "{batch}", "out", "02_align", "recalibrate", "bsqr_{iteration}", "{sample}.table")
     output: join(PARENT_DIR, "{batch}", "out", "02_align", "recalibrate", "summary", "{sample}_{iteration}_bqsrCovariates.pdf")
+    params: 
+        output_dir = join(PARENT_DIR, "{batch}", "out", "02_align", "recalibrate", "summary")
     shell: """
+        mkdir -p {params.output_dir}
         gatk AnalyzeCovariates \
           -before {input.initial_recal} \
           -after  {input.final_recal} \
