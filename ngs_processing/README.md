@@ -4,5 +4,5 @@ The Emory Integrated Computational Core at Emory University has updated certain 
 
 The files that may be of importance to all are the sites_only.vcf* files, which are also copied in under input_files to gw_known_amplicon.vcf.gz*. These are from the most recent independent joint calling attempt with novel discovery that did not rely on old known variants that was run on July 14, 2025.
 
-**07/2025: EICC_Version branch contains files updated by Robert A. Arthur at the Emory Integrated Computational Core. They are intended only as reference and to be used on EICC hardware only.**
+**07/2025: EICC_branch Branch contains files updated by Robert A. Arthur at the Emory Integrated Computational Core. They are intended only as reference and to be used on EICC hardware only.**
 
