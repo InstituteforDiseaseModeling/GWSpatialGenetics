@@ -1,0 +1,18 @@
+channels:
+  - r
+  - conda-forge
+dependencies:
+  - r-rmarkdown
+  - r-data.table
+  - r-dplyr
+  - r-tidyr=1.1.2
+  - r-ggplot2
+  - r-ggsci
+  - r-ggforce
+  - r-ggpubr
+  - r-knitr
+  - r-broom=0.7.4
+  - r-tibble=3.0.6
+  - pandoc
+  - icu=58
+  - nbformat
