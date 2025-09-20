@@ -51,16 +51,18 @@ base_colors2 <- c(base_colors,
   shades::addmix(base_colors, "blue", 0.5),
   #shades::saturation(shades::addmix(base_colors, "blue", 0.5), shades::scalefac(0.50)),
   shades::addmix(base_colors, "yellow", 0.2),
-  shades::saturation(shades::addmix(base_colors, "yellow", 0.2), shades::scalefac(0.50)))
+  shades::saturation(shades::addmix(base_colors, "yellow", 0.2), shades::scalefac(0.50)),
+  "#0054FFFF", "#3299FFFF", "#65CCFFFF", "#99EDFFFF", "#CCFFFFFF", "#FFFFCCFF", "#FFEE99FF", "#FFCC65FF", "#FF9932FF", "#FF5500FF",
+  "#E76254FF", "#EF8A47FF", "#F7AA58FF", "#FFD06FFF", "#FFE6B7FF", "#AADCE0FF", "#72BCD5FF", "#528FADFF", "#376795FF", "#1E466EFF")
 all_colors <- setNames(base_colors2, seq(1, length(base_colors2)))
 
 
 # reduced_base <- setNames(c("#D9C6B8", "#C2B0A3", "#836F65", "#52271CFF"), 
 #                          c("Observed once", "Observed in < 5 samples", "Observed in < 10 samples", "Observed in < 20 samples")) 
 reduced_base <- setNames(
-  c("#836F65", "#D9C6B8", "#B7957CFF", "#8C6751FF", "#593527FF", "#888888"), 
+  c("#836F65", "#D9C6B8", "#B7957CFF", "#8C6751FF", "#593527FF", "#888888", "#444444"), 
   c("Observed in < 20 specimens", "Observed in < 10 specimens", "Observed once", 
-    "Lower confidence - Observed > 1", "Lower confidence - Observed once", "Excluded")) 
+    "Lower confidence - Observed > 1", "Lower confidence - Observed once", "Excluded", "Not sequenced")) 
 nextstrain_colors <- c(all_colors, reduced_base)
 
 # countries
@@ -299,12 +301,7 @@ BarcodeCountPlots <- function(df, column = "year",
   
   ggplot_title = ifelse(is.null(ggplot_title), PlotTitle(df), ggplot_title)
   
-  if(column == "year"){
-    time_seq <- seq(min(df[[column]], na.rm = T), max(df[[column]], na.rm = T))
-    p <- base_p(column = sym(column)) +
-      scale_x_continuous(breaks = c(time_seq)) +
-      labs(x="Emergence year")
-  } else {
+  if(column != "year"){
     print("Checking the emergence date to plot maternal lineage plots by month.")
     column = "emergence_date_month"
     # Convert all dates to first of the month to group cases by month 
@@ -312,6 +309,11 @@ BarcodeCountPlots <- function(df, column = "year",
     p <- base_p(column = sym(column)) +
       scale_x_date(date_labels = "%Y-%m", date_breaks = "6 months") +
       labs(x="Emergence month and year")
+  } else {
+    time_seq <- seq(min(df[[column]], na.rm = T), max(df[[column]], na.rm = T))
+    p <- base_p(column = sym(column)) +
+      scale_x_continuous(breaks = c(time_seq)) +
+      labs(x="Emergence year")
   }
   
   num_facets <- if (!is.null(facet_variable)) dplyr::n_distinct(df[[facet_variable]]) else 1
