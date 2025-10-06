@@ -32,7 +32,8 @@ opt = parse_args(opt_parser)
 ################################################################################
 # load libraries
 packages_to_install <- c('data.table', 'dplyr', 'tidyr', 'tibble', 'stringr', 
-                         'ggplot2', 'ggpubr','ggnewscale', 'ggdist', 'ggridges', 'magrittr')
+                         'ggplot2', 'ggpubr','ggnewscale', 'ggdist', 'ggridges', 
+                         'magrittr')
 for(p in packages_to_install){
   if(!p %in% installed.packages()[,1]){
     install.packages(p, repos = "http://cran.us.r-project.org")
@@ -54,6 +55,7 @@ for(p in packages_to_install){
 # }
 # 
 # script_dir <- getScriptPath()
+
 setwd('/home/jribado/git/GWSpatialGenetics/analyses')
 script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 source(paste(script_dir, "mtDNA_common_functions.R", sep="/"))
@@ -474,9 +476,10 @@ SavePlots(counts_p + facet_grid(year~., scales = "free_y"), output_dir, "CHD_Bar
 rm(chad_counts)  
 
 # This will require updates as the genomics working group comes up with a more detailed analytical plan 
-SavePlots(dist_by_sim_plot(dplyr::filter(metadata, country == "Chad"),
-                                         country_diff['Chad'][[1]]), 
-          output_dir, "CHD_simDist.png", height=5, width=10)
+# This dist by sim plot for Chad is HUGE - like 10 GB of plotting points alone. Recommend updating with summary stats instead of individual points. 
+# SavePlots(dist_by_sim_plot(dplyr::filter(metadata, country == "Chad"),
+#                                          country_diff['Chad'][[1]]), 
+#           output_dir, "CHD_simDist.png", height=5, width=10)
 
 relatedness_summary <- PairwiseWeightedSummary(country_diff["Chad"][[1]], by_year = T)
 SavePlots(PairwiseProportionHeatMap(relatedness_summary$weighted_diff),

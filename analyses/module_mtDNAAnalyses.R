@@ -52,16 +52,16 @@ for(p in packages_to_install){
 # load functions
 # function to get the running script path if running in another directory
 # https://stackoverflow.com/questions/3452086/getting-path-of-an-r-script
-getScriptPath <- function(){
-  cmd.args <- commandArgs()
-  m <- regexpr("(?<=^--file=).+", cmd.args, perl=TRUE)
-  script.dir <- dirname(regmatches(cmd.args, m))
-  if(length(script.dir) == 0) stop("can't determine script dir: please call the script with Rscript")
-  if(length(script.dir) > 1) stop("can't determine script dir: more than one '--file' argument detected")
-  return(script.dir)
-}
-
+# getScriptPath <- function(){
+#   cmd.args <- commandArgs()
+#   m <- regexpr("(?<=^--file=).+", cmd.args, perl=TRUE)
+#   script.dir <- dirname(regmatches(cmd.args, m))
+#   if(length(script.dir) == 0) stop("can't determine script dir: please call the script with Rscript")
+#   if(length(script.dir) > 1) stop("can't determine script dir: more than one '--file' argument detected")
+#   return(script.dir)
+# }
 # script_dir <- getScriptPath()
+
 setwd('/home/jribado/git/GWSpatialGenetics/analyses')
 script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 source(paste(script_dir, "module_checkMetadata.R", sep="/"))
@@ -291,6 +291,7 @@ SaveTabDelim(potential_links_specimens, paste0(output_dir, "/", batch_name, "_Co
 
 ################################################################################
 # All country pairwise similarity distributions
+# This function only does pairwise comparisons for specimens within the year and +/- 1 year since more than 1 year is likely not part of a comparison vignette and lowers compute cost and output file size.
 ################################################################################
 country_diff <- parallel::mclapply(setNames(barcode_countries, barcode_countries), function(i){
   diff <- SubsampleMerge(dplyr::filter(metadata, country == !!i & analysis_inclusion == "Included"))
@@ -316,6 +317,7 @@ SavePlots(related_and_missing_plot(diff_lab, "sample"),
 ################################################################################
 # Original BSQR sample list
 # ids <- data.table::fread("/mnt/data/guinea_worm/bsqr_hq_samples.txt", header = F)
+#
 # July 2025 BSQR sample list - make sure the correct VCF file is loaded above 
 # ids <- data.frame(V1 = vcf_samples)
 # 
