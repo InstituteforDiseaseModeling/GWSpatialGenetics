@@ -52,16 +52,16 @@ for(p in packages_to_install){
 # load functions
 # function to get the running script path if running in another directory
 # https://stackoverflow.com/questions/3452086/getting-path-of-an-r-script
-getScriptPath <- function(){
-  cmd.args <- commandArgs()
-  m <- regexpr("(?<=^--file=).+", cmd.args, perl=TRUE)
-  script.dir <- dirname(regmatches(cmd.args, m))
-  if(length(script.dir) == 0) stop("can't determine script dir: please call the script with Rscript")
-  if(length(script.dir) > 1) stop("can't determine script dir: more than one '--file' argument detected")
-  return(script.dir)
-}
-
+# getScriptPath <- function(){
+#   cmd.args <- commandArgs()
+#   m <- regexpr("(?<=^--file=).+", cmd.args, perl=TRUE)
+#   script.dir <- dirname(regmatches(cmd.args, m))
+#   if(length(script.dir) == 0) stop("can't determine script dir: please call the script with Rscript")
+#   if(length(script.dir) > 1) stop("can't determine script dir: more than one '--file' argument detected")
+#   return(script.dir)
+# }
 # script_dir <- getScriptPath()
+
 setwd('/home/jribado/git/GWSpatialGenetics/analyses')
 script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 source(paste(script_dir, "module_checkMetadata.R", sep="/"))
@@ -74,7 +74,7 @@ source(paste(script_dir, "mtDNA_plotting.R", sep="/"))
 # plotitng options
 theme_set(theme_bw())
 
-diploid_vcf = '/mnt/data/guinea_worm/processing/vcf_files/batch_Apr042025_jointGenotypeFiltered.vcf.gz'
+diploid_vcf = '/mnt/data/guinea_worm/testing/recalibration_eicc/recalJuly2025_jointGenotypeFiltered.vcf.gz'
 metadata_file = '/mnt/data/guinea_worm/metadata/GenomicSamplesMetadata_Database_v4.2_250326.rds'
 
 # update parser if running in manual mode
@@ -109,7 +109,6 @@ hap_vcf <- vcf2haploid(vcf)
 
 # generate barcodes from high quality positions
 vcf_clust <- gt2barcode(hap_vcf$vcf) 
-
 # get names of samples in the vcf
 vcf_samples <- colnames(hap_vcf$vcf@gt)[-1]
 vcf_numbers <- cbind.data.frame(
@@ -124,11 +123,11 @@ if(grepl("\\.txt$", opt$metadata)){
 } else{
   stop("Metadata does not have .txt or .rds extension. User must manually code data input.")
 }
-metadata[metadata == "." & !is.na(metadata)] <- NA
+# metadata[metadata == "." & !is.na(metadata)] <- NA
 metadata <- run_metadata_checks(metadata, 
                                 vcf_samples = vcf_numbers, 
                                 excluded_samples = hap_vcf$missing_df)
-metadata <- dplyr::left_join(metadata, vcf_clust) %>%
+metadata <- dplyr::left_join(metadata, vcf_clust, relationship="many-to-many") %>%
   dplyr::mutate(epi_foci = ifelse(epi_foci == "", NA, gsub(" focal area", "", epi_foci)))
 
 
@@ -162,16 +161,51 @@ SaveTabDelim(barcode_pairwise, paste0(output_dir, "/", batch_name, "_relatedness
 missing_count_variable = names(metadata)[grepl("missing_n_", names(metadata))]
 n_variants <- readr::parse_number(missing_count_variable)
 
-barcodes <- unique(dplyr::select(vcf_clust, amplicon_barcode_conservative, sequence, frequency_conservative, eval(missing_count_variable))) %>%
+barcodes <- unique(dplyr::select(metadata, amplicon_barcode_conservative, sequence, frequency_conservative, eval(missing_count_variable))) %>% unique() %>%
   dplyr::filter(!is.na(sequence)) 
-complete_barcodes <- dplyr::filter(barcodes, get(missing_count_variable) == 0) %>% .[['amplicon_barcode']]
-updated_barcodes <- ManualBarcodeRecode(barcodes) 
+complete_barcodes <- dplyr::filter(barcodes, .data[[missing_count_variable]] == 0) %>% .[['amplicon_barcode_conservative']]
+# updated_barcodes <- ManualBarcodeRecode(barcodes) 
+# update barcodes manually
+missing_barcodes  <- dplyr::filter(barcodes, get(missing_count_variable) != 0 & 
+                                    get(missing_count_variable) < floor(n_variants * opt$filt_prop)) %>% .[['amplicon_barcode_conservative']]
+
+# matrix version of relatedness for faster checking of relatedness
+m <- reshape2::acast(barcode_pairwise, amplicon_barcode_conservative.x ~ amplicon_barcode_conservative.y, value.var="rmNA")
+
+# Idea - for barcodes with less than 10% of positions missing, check that all pairs in grouping have similarity of 0. 
+# If so, merge as new group to reduce singletons
+refactor_df <- dplyr::bind_rows(lapply(missing_barcodes, function(i) BarcodeAmbiguity(i, m))) 
+
+# check that for any newly grouped barcodes, all barcodes in new group also are identical at available variant positions
+refactor_unambiguous <- dplyr::filter(refactor_df, ambiguous == "No") 
+refactor_counts <- table(refactor_unambiguous$potential_barcode_matches) 
+check_refactor <- names(refactor_counts)[refactor_counts > 1]
+
+exclude_refactor <- unlist(lapply(check_refactor, function(j){
+  refactor_tmp <- dplyr::filter(refactor_df, potential_barcode_matches == !!j)
+  pairwise_tmp <- m[row.names(m) %in% refactor_tmp$amplicon_barcode_conservative ,colnames(m) %in% refactor_tmp$amplicon_barcode_conservative]
+  non_zero_pairs <- sum(pairwise_tmp[pairwise_tmp > 0], na.rm = TRUE)
+  if(non_zero_pairs != 0){
+    return(j)
+  }
+}))
+refactor_unambiguous <- dplyr::filter(refactor_unambiguous, !potential_barcode_matches %in% exclude_refactor)
+
+updated_barcodes <- dplyr::left_join(barcodes, refactor_unambiguous) %>%
+  dplyr::mutate(amplicon_barcode = case_when(
+    get(missing_count_variable) == 0 | is.na(ambiguous) ~ as.character(amplicon_barcode_conservative),
+    ambiguous == "No" ~ as.character(potential_barcode_matches),
+    TRUE  ~ "Check"))
+
+rm(m)
+
 # update metadata to include new non-ambiguous groupings
-metadata <- dplyr::inner_join(metadata, updated_barcodes) %>%
+metadata <- dplyr::left_join(metadata, updated_barcodes) %>%
   dplyr::mutate(complete_regroup = ifelse(amplicon_barcode %in% complete_barcodes, "Yes", "No")) %>%
   AssignAmpliconGrouping(.) %>% ungroup()
 
 # update color for amplicons 
+metadata <- dplyr::filter(metadata, !is.na(amplicon))
 common_amplicons <- readr::parse_number(
   unique(metadata$amplicon)[!unique(metadata$amplicon) %in% names(reduced_base)]) 
 common_amplicons <- unique(common_amplicons[!is.na(common_amplicons) & common_amplicons>0])
@@ -229,11 +263,11 @@ SavePlots(BarcodeByCountryPlot(metadata),
           height=4, width=10)
 
 # by country barcodes
-barcode_countries <- names(table(metadata$country))[table(metadata$country) > 5]
+barcode_countries <- names(table(metadata$country))[table(metadata$country) > 10]
 barcode_countries <- barcode_countries[barcode_countries != ""]
 lapply(barcode_countries, function(i){
-  BarcodeCountPlots(dplyr::filter(metadata, country == !!i))
-  BarcodeCountPlots(dplyr::filter(metadata, country == !!i), column="month")
+  BarcodeCountPlots(dplyr::filter(metadata, country == !!i & !is.na(amplicon_barcode)))
+  BarcodeCountPlots(dplyr::filter(metadata, country == !!i & !is.na(amplicon_barcode)), column="month")
 })
 
 # barcodes by country overlap - groups mitochondrial lineages across long ranges 
@@ -257,6 +291,7 @@ SaveTabDelim(potential_links_specimens, paste0(output_dir, "/", batch_name, "_Co
 
 ################################################################################
 # All country pairwise similarity distributions
+# This function only does pairwise comparisons for specimens within the year and +/- 1 year since more than 1 year is likely not part of a comparison vignette and lowers compute cost and output file size.
 ################################################################################
 country_diff <- parallel::mclapply(setNames(barcode_countries, barcode_countries), function(i){
   diff <- SubsampleMerge(dplyr::filter(metadata, country == !!i & analysis_inclusion == "Included"))
@@ -277,11 +312,14 @@ SavePlots(related_and_missing_plot(diff_lab, "sample"),
           output_dir, "lab_ClusterMatrices.png", width=6, height=5.5)
 
 
-
 ################################################################################
 # Characterize BQSR contributing samples - Manual run 
 ################################################################################
+# Original BSQR sample list
 # ids <- data.table::fread("/mnt/data/guinea_worm/bsqr_hq_samples.txt", header = F)
+#
+# July 2025 BSQR sample list - make sure the correct VCF file is loaded above 
+# ids <- data.frame(V1 = vcf_samples)
 # 
 # # Regex to extract parts: 3 letters, 3 letters, 4 digits (year)
 # matches <- str_match(ids$V1, "^([A-Z]{3})([A-Z]{3})?(\\d{4})")
@@ -297,4 +335,5 @@ SavePlots(related_and_missing_plot(diff_lab, "sample"),
 # ) %>%
 #   dplyr::filter(country_code != "BAT")
 # unique(result$sample_id) %>% length()    # N specimens
-# table(result$country_code, result$year)  # Country specimen counts
+# counts <- table(result$country_code, result$year)  # Country specimen counts
+# counts

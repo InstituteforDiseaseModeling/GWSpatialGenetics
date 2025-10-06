@@ -32,7 +32,8 @@ opt = parse_args(opt_parser)
 ################################################################################
 # load libraries
 packages_to_install <- c('data.table', 'dplyr', 'tidyr', 'tibble', 'stringr', 
-                         'ggplot2', 'ggpubr','ggnewscale', 'ggridges')
+                         'ggplot2', 'ggpubr','ggnewscale', 'ggdist', 'ggridges', 
+                         'magrittr')
 for(p in packages_to_install){
   if(!p %in% installed.packages()[,1]){
     install.packages(p, repos = "http://cran.us.r-project.org")
@@ -54,6 +55,7 @@ for(p in packages_to_install){
 # }
 # 
 # script_dir <- getScriptPath()
+
 setwd('/home/jribado/git/GWSpatialGenetics/analyses')
 script_dir <- try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 source(paste(script_dir, "mtDNA_common_functions.R", sep="/"))
@@ -228,7 +230,7 @@ old_clusters <- dplyr::bind_rows(
 ) %>%
   dplyr::mutate(cluster = ifelse(cluster %in% c("88", "99"), NA, cluster))
 
-metadata <- dplyr::left_join(metadata, dplyr::select(old_clusters, sample, cluster))
+metadata <- dplyr::left_join(unique(metadata), dplyr::select(old_clusters, sample, cluster))
 
 lapply(unique(metadata$cluster)[!is.na(unique(metadata$cluster))], ClusterPariwiseMatrices)
 
@@ -311,25 +313,25 @@ pairwise_counts_border <- diff_border %>%
 SavePlots(pairwise_counts_border, output_dir, "CAM-CHD_pairwiseHexByDist.png", 
           height=3, width=8)
 
-# dapc analyses
-vcf <- vcfR::read.vcfR(paste0(output_dir, "/", batch_name, "_jointHaploidFilterWithSingletons.vcf.gz"))
-border_vcf <- vcf[sample=border_sub$sample]
-border_sub <- border_sub[match(colnames(border_vcf@gt)[-1], border_sub$sample),]
-my_genind <- vcfR::vcfR2genind(border_vcf)
-my_genind@pop <- as.factor(border_sub$country)
-
-grp <- find.clusters(my_genind, max.n.clust=40)
-table(pop(my_genind), grp$grp)
-dapc1 <- dapc(my_genind, pop=pop(my_genind), n.pca=20, n.da=6)
-ggsave(filename=paste(output_dir, "CAM-CHD_DAPCByPop.png", sep="/"),
-  plot = call(scatter(dapc1, scree.da=FALSE,  legend=TRUE, col=c("red", "blue"), solid=.4)), 
-  device = "png")
-
-
-compoplot(dapc1, posi="bottomright",
-          txt.leg=paste("Cluster", 1:2), lab="",
-          ncol=1, xlab="individuals", col=funky(2),
-          )
+# Work in progress - DAPC analyses
+# vcf <- vcfR::read.vcfR(paste0(output_dir, "/", batch_name, "_jointHaploidFilterWithSingletons.vcf.gz"))
+# border_vcf <- vcf[sample=border_sub$sample]
+# border_sub <- border_sub[match(colnames(border_vcf@gt)[-1], border_sub$sample),]
+# my_genind <- vcfR::vcfR2genind(border_vcf)
+# my_genind@pop <- as.factor(border_sub$country)
+# 
+# grp <- find.clusters(my_genind, max.n.clust=40)
+# table(pop(my_genind), grp$grp)
+# dapc1 <- dapc(my_genind, pop=pop(my_genind), n.pca=20, n.da=6)
+# ggsave(filename=paste(output_dir, "CAM-CHD_DAPCByPop.png", sep="/"),
+#   plot = call(scatter(dapc1, scree.da=FALSE,  legend=TRUE, col=c("red", "blue"), solid=.4)), 
+#   device = "png")
+# 
+# 
+# compoplot(dapc1, posi="bottomright",
+#           txt.leg=paste("Cluster", 1:2), lab="",
+#           ncol=1, xlab="individuals", col=funky(2),
+#           )
 
 ################################################################################
 # Ethiopia
@@ -382,36 +384,34 @@ baboon_barcodes_p <- eth_baboon %>%
   guides(x =  guide_axis(angle = 45))
 SavePlots(baboon_barcodes_p , plot_path = output_dir, name = "ETH_BaboonBarcodes.png", height = 4, width=6.5)
 
-ClusterPlots(df = dplyr::filter(metadata, country == "Ethiopia" & host == "Baboon (Papio anubis)"),
-            pairwise_df = SubsampleMerge(dplyr::filter(metadata, country == "Ethiopia" & host == "Baboon (Papio anubis)"), split_variable = NULL),
+ClusterPlots(df = dplyr::filter(metadata, country == "Ethiopia" & host == "Baboon (Papio Anubis)"),
+            pairwise_df = SubsampleMerge(dplyr::filter(metadata, country == "Ethiopia" & host == "Baboon (Papio Anubis)"), split_variable = NULL),
             output_name =  "ETH_BaboonRelatednessMatrix")
 
-# dapc analyses
-vcf <- vcfR::read.vcfR(paste0(output_dir, "/", batch_name, "_jointHaploidFilterWithSingletons.vcf.gz"))
-eth_samples <- dplyr::filter(metadata, country == "Ethiopia")
-eth_vcf <- vcf[sample=eth_samples$sample]
-eth_samples <- eth_samples[match(colnames(eth_vcf@gt)[-1], eth_samples$sample),]
-my_genind <- vcfR::vcfR2genind(eth_vcf)
-my_genind@pop <- as.factor(eth_samples$host)
-
-grp <- find.clusters(my_genind, max.n.clust=40)
-table(pop(my_genind), grp$grp)
-dapc1 <- dapc(my_genind, pop=pop(my_genind), n.pca=20, n.da=6)
-ggsave(filename=paste(output_dir, "CAM-CHD_DAPCByPop.png", sep="/"),
-       plot = call(scatter(dapc1, scree.da=FALSE,  legend=TRUE, col=c("red", "blue"), solid=.4)), 
-       device = "png")
+# Work in progress - DAPC analyses
+# vcf <- vcfR::read.vcfR(paste0(output_dir, "/", batch_name, "_jointHaploidFilterWithSingletons.vcf.gz"))
+# eth_samples <- dplyr::filter(metadata, country == "Ethiopia")
+# eth_vcf <- vcf[sample=eth_samples$sample]
+# eth_samples <- eth_samples[match(colnames(eth_vcf@gt)[-1], eth_samples$sample),]
+# my_genind <- vcfR::vcfR2genind(eth_vcf)
+# my_genind@pop <- as.factor(eth_samples$host)
+# 
+# grp <- find.clusters(my_genind, max.n.clust=40)
+# table(pop(my_genind), grp$grp)
+# dapc1 <- dapc(my_genind, pop=pop(my_genind), n.pca=20, n.da=6)
+# ggsave(filename=paste(output_dir, "CAM-CHD_DAPCByPop.png", sep="/"),
+#        plot = call(scatter(dapc1, scree.da=FALSE,  legend=TRUE, col=c("red", "blue"), solid=.4)), 
+#        device = "png")
 
 ################################################################################
 # Mali
 ################################################################################
 mali_sub  <- dplyr::filter(metadata, country == "Mali" & year > 2022)
-# border_sub <- dplyr::filter(metadata, country == "Cameroon" | epi_foci == "Chad-Cameroon border area")
 diff_mali = SubsampleMerge(mali_sub, split_variable = NULL)
 
 ClusterPlots(mali_sub, 
              pairwise_df = diff_mali, 
              output_name="Mali2022+")
-
 
 
 ################################################################################
@@ -431,10 +431,11 @@ SavePlots(PairwiseProportionHeatMap(relatedness_summary$weighted_diff),
 
 # Focal comparisons
 ####################################
-BarcodeCountPlots(dplyr::filter(metadata, country == "South Sudan") %>%
-                    dplyr::mutate(epi_foci = ifelse(is.na(epi_foci), "Not provided", epi_foci),
-                                  epi_foci = factor(epi_foci, levels=c(names(foci_order), "Not provided"))),
-                  facet_variable = "epi_foci")
+# foci_order <- c("Northern Jonglei Focal Area", "West Of Nile Focal Area", "Central Focal Area", "East Of Nile Focal Area", "Not provided")
+# BarcodeCountPlots(dplyr::filter(metadata, country == "South Sudan") %>%
+#                     dplyr::mutate(epi_foci = ifelse(is.na(epi_foci), "Not provided", epi_foci),
+#                                   epi_foci = factor(epi_foci, levels=c(names(foci_order), "Not provided"))),
+#                   facet_variable = "epi_foci")
 
 ssu_focal_distribution <- VariableDistributionPlot(
     df = dplyr::filter(metadata, country == "South Sudan"),
@@ -475,9 +476,10 @@ SavePlots(counts_p + facet_grid(year~., scales = "free_y"), output_dir, "CHD_Bar
 rm(chad_counts)  
 
 # This will require updates as the genomics working group comes up with a more detailed analytical plan 
-SavePlots(dist_by_sim_plot(dplyr::filter(metadata, country == "Chad"),
-                                         country_diff['Chad'][[1]]), 
-          output_dir, "CHD_simDist.png", height=5, width=10)
+# This dist by sim plot for Chad is HUGE - like 10 GB of plotting points alone. Recommend updating with summary stats instead of individual points. 
+# SavePlots(dist_by_sim_plot(dplyr::filter(metadata, country == "Chad"),
+#                                          country_diff['Chad'][[1]]), 
+#           output_dir, "CHD_simDist.png", height=5, width=10)
 
 relatedness_summary <- PairwiseWeightedSummary(country_diff["Chad"][[1]], by_year = T)
 SavePlots(PairwiseProportionHeatMap(relatedness_summary$weighted_diff),
@@ -510,58 +512,60 @@ chd_admin_distribution <- ggpubr::annotate_figure(chd_admin_distribution, top = 
 SavePlots(chd_admin_distribution, plot_path = output_dir, name = "CHD_adminaPairwiseDistributions.png", height = 4, width=8)
  
 
-# Determine ranges and villages that may be likely to have 
-chad_gps_pairs <- unique(dplyr::select(country_diff['Chad'][[1]], gps_id_pair, meters))
-
-barcode_range_summary <- as.data.table(dplyr::filter(country_diff['Chad'][[1]], !grepl("_", amplicon_barcode_pair) & !is.na(meters)) %>%
-                                         dplyr::group_by(amplicon_barcode_pair, year_pair) %>%
-                                         summarise(n_pairs = n(),
-                                                   mean_dist = mean(meters), 
-                                                   median_dist = median(meters), 
-                                                   sd_dist=sd(meters)))
-
-case_data <- data.table::fread("/mnt/data/guinea_worm/metadata/chad_vas_2020_2024.txt") 
-names(case_data) <- c("year", "admina", "adminb", "adminc", "admind", "surveillance_level", "village_1_plus", "human_case", "animal_infection", "abate", "dog_tether")
-admind_change <- data.table::fread("/mnt/data/guinea_worm/metadata/chad_change_trends_by_snu4_by_year.csv")[-1] %>%
-  tidyr::unite("admin_key", starts_with("snu"), remove = F, sep = "-") 
-names(admind_change) <- c("admin_key", "admina", "adminb", "adminc", "admind", "year", "n_infections", "infection_category", "delta", "delta_category") 
+# Working in progress - Determine ranges and villages that may be likely to have an outbreak
+# chad_gps_pairs <- unique(dplyr::select(country_diff['Chad'][[1]], gps_id_pair, meters))
+# 
+# barcode_range_summary <- as.data.table(dplyr::filter(country_diff['Chad'][[1]], !grepl("_", amplicon_barcode_pair) & !is.na(meters)) %>%
+#                                          dplyr::group_by(amplicon_barcode_pair, year_pair) %>%
+#                                          summarise(n_pairs = n(),
+#                                                    mean_dist = mean(meters), 
+#                                                    median_dist = median(meters), 
+#                                                    sd_dist=sd(meters)))
 
 
-specimens_wide <- dplyr::filter(metadata, country =="Chad" & !is.na(admina)) %>%
-  group_by(year, admin_key) %>%
-  count()  %>%
-  tidyr::pivot_wider(names_from = year, values_from = n) 
-
-infection_villages <- dplyr::filter(case_data, animal_infection > 0 | human_case > 0) %>%
-  dplyr::mutate(total_cases = animal_infection + human_case) %>%
-  dplyr::select(year, total_cases, starts_with("admin")) %>%
-  dplyr::arrange(year) %>%
-  tidyr::pivot_wider(names_from = year, values_from = total_cases) %>%
-  dplyr::mutate(infected_years = rowSums(!is.na(select(., starts_with("20"))))) %>%
-  tidyr::unite("admin_key", admina:admind, remove = F, sep = "-")
-point_villages <- dplyr::filter(infection_villages, infected_years == 1) %>%
-  tidyr::pivot_longer(cols = starts_with("20"), names_to = "year") %>%
-  dplyr::filter(!is.na(value)) %>%
-  dplyr::filter(admin_key %in% unique(metadata$admin_key))
-point_vector <- setNames(point_villages$year, point_villages$admin_key)
-
-columns <- c("year", "amplicon_barcode", "admin_key", "admina", "adminb", "adminc", "admind")
-singletons <- dplyr::filter(metadata, frequency == 1) %>% dplyr::pull(amplicon_barcode)
-
-
-admin_barcode_emergence <- dplyr::bind_rows(lapply(specimens_wide$admin_key, FirstBarcodeObservation))
-emergence_ranges <- dplyr::bind_rows(lapply(specimens_wide$admin_key, NearbyBarcodeRanges))
-
-
-admin_summary <- admin_barcode_emergence %>%
-  dplyr::group_by(admin_key, barcode_emergence, year) %>%
-  summarize(n_samples = sum(n_specimens)) %>% ungroup() %>% 
-  group_by(admin_key, year) %>%
-  mutate(n_specimens = sum(n_samples),
-         group_proportion = n_samples/n_specimens) %>%
-  dplyr::select(-n_samples) %>%
-  tidyr::pivot_wider(names_from = barcode_emergence, values_from = group_proportion) %>%
-  dplyr::left_join(admind_change, .)
+# Working in progress - associating changes of new barcodes to case changes
+# case_data <- data.table::fread("/mnt/data/guinea_worm/metadata/chad_vas_2020_2024.txt") 
+# names(case_data) <- c("year", "admina", "adminb", "adminc", "admind", "surveillance_level", "village_1_plus", "human_case", "animal_infection", "abate", "dog_tether")
+# admind_change <- data.table::fread("/mnt/data/guinea_worm/metadata/chad_change_trends_by_snu4_by_year.csv")[-1] %>%
+#   tidyr::unite("admin_key", starts_with("snu"), remove = F, sep = "-") 
+# names(admind_change) <- c("admin_key", "admina", "adminb", "adminc", "admind", "year", "n_infections", "infection_category", "delta", "delta_category") 
+# 
+# 
+# specimens_wide <- dplyr::filter(metadata, country =="Chad" & !is.na(admina)) %>%
+#   group_by(year, admin_key) %>%
+#   count()  %>%
+#   tidyr::pivot_wider(names_from = year, values_from = n) 
+# 
+# infection_villages <- dplyr::filter(case_data, animal_infection > 0 | human_case > 0) %>%
+#   dplyr::mutate(total_cases = animal_infection + human_case) %>%
+#   dplyr::select(year, total_cases, starts_with("admin")) %>%
+#   dplyr::arrange(year) %>%
+#   tidyr::pivot_wider(names_from = year, values_from = total_cases) %>%
+#   dplyr::mutate(infected_years = rowSums(!is.na(select(., starts_with("20"))))) %>%
+#   tidyr::unite("admin_key", admina:admind, remove = F, sep = "-")
+# point_villages <- dplyr::filter(infection_villages, infected_years == 1) %>%
+#   tidyr::pivot_longer(cols = starts_with("20"), names_to = "year") %>%
+#   dplyr::filter(!is.na(value)) %>%
+#   dplyr::filter(admin_key %in% unique(metadata$admin_key))
+# point_vector <- setNames(point_villages$year, point_villages$admin_key)
+# 
+# columns <- c("year", "amplicon_barcode", "admin_key", "admina", "adminb", "adminc", "admind")
+# singletons <- dplyr::filter(metadata, frequency == 1) %>% dplyr::pull(amplicon_barcode)
+# 
+# 
+# admin_barcode_emergence <- dplyr::bind_rows(lapply(specimens_wide$admin_key, FirstBarcodeObservation))
+# emergence_ranges <- dplyr::bind_rows(lapply(specimens_wide$admin_key, NearbyBarcodeRanges))
+# 
+# 
+# admin_summary <- admin_barcode_emergence %>%
+#   dplyr::group_by(admin_key, barcode_emergence, year) %>%
+#   summarize(n_samples = sum(n_specimens)) %>% ungroup() %>% 
+#   group_by(admin_key, year) %>%
+#   mutate(n_specimens = sum(n_samples),
+#          group_proportion = n_samples/n_specimens) %>%
+#   dplyr::select(-n_samples) %>%
+#   tidyr::pivot_wider(names_from = barcode_emergence, values_from = group_proportion) %>%
+#   dplyr::left_join(admind_change, .)
 
 
 
