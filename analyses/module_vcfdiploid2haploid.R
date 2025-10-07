@@ -106,13 +106,13 @@ vcf2haploid <- function(vcf){
   # remove batch information for duplicated samples
   colnames(tmp_vcf@gt) <- gsub("-batch.*" , "", colnames(tmp_vcf@gt))
   colnames(tmp_vcf@gt) <- gsub("-" , ".", colnames(tmp_vcf@gt))
-  tmp_vcf <- tmp_vcf[row.names(gt) %in% row.names(site_keep), ]
+  tmp_vcf <- tmp_vcf[row.names(gt) %in% row.names(site_keep_sing), ]
 
   # organize summary statistics for filtering
   summary_df <- data.frame(rbind(
     "Diploid VCF  " = basename(diploid_vcf),
     "Samples (All) " = ncol(vcf@gt),
-    "Samples (Exluding technical replicates) " = ncol(vcf@gt) - length(dup_samples),
+    "Samples (Excluding technical replicates) " = ncol(vcf@gt) - length(dup_samples),
     "Variants " = nrow(het_hap),
     "Minimum genotype ready depth " = min_gt_depth,
     "Heterozygous recode proportion " = paste(1 - het_proportion, het_proportion, sep=","),

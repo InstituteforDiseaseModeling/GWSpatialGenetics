@@ -1,16 +1,14 @@
-import os, re
-import numpy as np
-import pandas as pd
 
-# Rules that mirror interative recalibration calling, with different output files
+# Rules that that mirror iterative base recalibration calling with with known variants.
+
 ###############################################################################
 rule calculate_apply_known_base_recalibration:
     input:
         bam = rules.merge_add_groups.output.bam,
         known_vcf = config['variant_calling']['known_variants']
     output: 
-        table = join(PROJECT_DIR, "02_align/recalibrate/known_variants/{sample}.table"),
-        bam = join(PROJECT_DIR, "02_align/recalibrate/known_variants/{sample}.bam")
+        table = join(PARENT_DIR, BATCH_NAME, "out", "02_align", "recalibrate", "known_variants", "{sample}.table"),
+        bam = join(PARENT_DIR, BATCH_NAME, "out", "02_align", "recalibrate", "known_variants", "{sample}.bam")
     shell: """
         gatk BaseRecalibrator \
             --reference {REF_FILE} \
@@ -27,8 +25,11 @@ rule calculate_apply_known_base_recalibration:
 ###############################################################################
 rule check_base_known_recalibration:
     input: rules.calculate_apply_known_base_recalibration.output.table
-    output: join(PROJECT_DIR, "02_align/recalibrate/{sample}_known_bqsrCovariates.pdf")
+    output: join(PARENT_DIR, BATCH_NAME, "out", "02_align", "recalibrate", "summary", "{sample}_known_bqsrCovariates.pdf")
+    params: 
+        output_dir = join(PARENT_DIR, BATCH_NAME, "out", "02_align", "recalibrate", "summary")
     shell: """
+        mkdir -p {params.output_dir}
         gatk AnalyzeCovariates \
             -bqsr {input} \
             -plots {output}
@@ -41,10 +42,9 @@ rule call_haplotypes_known:
         bam_idx = rules.merge_add_groups.output.bai, # not directly used in rule
         refdict = rules.create_ref_dict.output, # not directly used in rule
         faidx = rules.build_ref_faidx.output    # not directly used in rule
-    output: join(PROJECT_DIR, "03_variant_calls", "known_variants", "{sample}.g.vcf.gz")
+    output: join(PARENT_DIR, BATCH_NAME, "out", "03_variant_calls", "known_variants", "{sample}.g.vcf.gz")
     threads: 2
     params:
-        # ploidy = config['variant_calling']['ploidy']
         ploidy = 2
     shell: """
         gatk HaplotypeCaller \
@@ -56,70 +56,36 @@ rule call_haplotypes_known:
             --native-pair-hmm-threads {threads}
     """
 
+
 ################################################################################
-rule gvcf_known_file:
-    input: expand(join(PROJECT_DIR, "03_variant_calls", "known_variants", "{sample}.g.vcf.gz"), sample = list(set(metadata['sample'])))
-    output: join(PROJECT_DIR, "03_variant_calls", "known_variants", "genomicsDBimport_gvcf_list.txt")
-    params:     
-        gvcf_dir = join(PROJECT_DIR, "03_variant_calls", "known_variants")
+rule gvcf_batch_file:
+    input:
+        gvcfs = expand(join(PARENT_DIR, BATCH_NAME, "out", "03_variant_calls", "known_variants", "{sample}.g.vcf.gz"), sample=UNIQUE_SAMPLES)
+    output:
+        list_file = join(PARENT_DIR, BATCH_NAME, "out", "03_variant_calls", "known_variants", "genomicsDBimport_gvcf_list.txt")
     run:
-        gvcf_list_df(str(params.gvcf_dir), str(output))  
+        gvcf_files = list(map(str, input.gvcfs))  
+        gvcf_prefixes = [
+            re.split(r'_[0-9]+Iter|\.g\.vcf(?:\.gz)?$', os.path.basename(f))[0]
+            for f in gvcf_files
+        ]
+        gvcf_df = pd.DataFrame(np.c_[gvcf_prefixes, gvcf_files])
+        gvcf_df.to_csv(output[0], index=False, header=False, sep="\t") 
+         
 
 
 ################################################################################
 # additional rules for optional single batch joint genotype calling
 ################################################################################
 rule batch_joint_genotyping:
-    input: rules.GenomicsDBImport.output
-    output: join(PROJECT_DIR, "03_variant_calls", "known_variants", "joint_genotype.vcf.gz")
+    input: rules.gvcf_batch_file.output
+    output: join(PARENT_DIR, BATCH_NAME, "out", "03_variant_calls", "known_variants", "jointGenotype.vcf.gz")
     params: 
-        db_dir = join(PROJECT_DIR, "03_variant_calls", "known_variants", "genomicsDB"),
+        db_dir = join(PARENT_DIR, BATCH_NAME, "out", "03_variant_calls", "known_variants", "genomicsDB"),
     shell: """
         gatk GenotypeGVCFs \
             --reference {REF_FILE} \
             --variant gendb://{params.db_dir} \
             --output {output} \
-    """
-
-################################################################################
-rule filter_batch_vcf:
-    input:  rules.batch_joint_genotyping.output
-    output: join(PROJECT_DIR, "03_variant_calls", "known_variants", "joint_genotypeAnnotated.vcf.gz")    
-    params:
-        qd_score = config['variant_filter']['quality_depth'],
-        fisher   = config['variant_filter']['fisher_strand'],
-        map_qual = config['variant_filter']['mapping_quality'],
-        map_root = config['variant_filter']['mapping_rootsq'],
-        map_rank = config['variant_filter']['mapping_rank'],
-        depth    = config['variant_filter']['read_depth_min']
-    shell: """
-        gatk VariantFiltration  \
-            --reference {REF_FILE} \
-            --variant {input} \
-           --filter-expression \"QD < {params.qd_score}\" --filter-name \"QD\" \
-           --filter-expression \"FS > {params.fisher}\" --filter-name \"FS\" \
-           --filter-expression \"MQ < {params.map_qual}\" --filter-name \"MQ\" \
-           --filter-expression \"MQRankSum < {params.map_root}\" --filter-name \"MQRank\" \
-           --filter-expression \"ReadPosRankSum < {params.map_rank}\" --filter-name \"ReadPosRank\"  \
-           --filter-expression \"DP < {params.depth}\" --filter-name \"depth\"  \
-           --genotype-filter-expression "isHet == 1" \
-           --genotype-filter-name "isHetFilter" \
-           --output {output}  
-    """
-
-################################################################################
-rule snp_batch_vcf:
-    input:  rules.filter_batch_vcf.output
-    output: join(PROJECT_DIR, "03_variant_calls", "known_variants", "joint_genotypeFiltered.vcf.gz")
-    params: 
-        max_missing = 1 - config['variant_filter']['max_missing'] 
-    shell: """
-        gatk SelectVariants \
-            --reference {REF_FILE} \
-            --variant {input} \
-            --select-type-to-include SNP \
-            --exclude-filtered \
-            --max-nocall-fraction {params.max_missing} \
-            --output {output} 
     """
 

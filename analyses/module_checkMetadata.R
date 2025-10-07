@@ -42,10 +42,10 @@ names(country_codes) <- c("country", "country_code")
 host_codes <- rbind.data.frame(
   c("Dog", "DOG"),
   c("Human", "HUM"),
-  c("Cat, domestic", "CAT"),
-  c("Cat, Panthera pardus", "PPD"),
-  c("Cat, wild unknown spp.", "WCT"),
-  c("Baboon", "BAB"),
+  c("Cat (domestic)", "CAT"),
+  c("Leopard (Panthera Pardus)", "PPD"),
+  c("Cat (wild unknown spp.)", "WCT"),
+  c("Baboon (Papio Anubis)", "BAB"),
   c("Unknown", "UNK"),
   c("Unknown", "Unknown"))
 names(host_codes) <- c("host", "host_code")
@@ -54,13 +54,28 @@ names(host_codes) <- c("host", "host_code")
 # functions
 #######################################################################
 metadata_minor_reformat <- function(df){
-  names(df) <- gsub(" ", "_", tolower(names(df)))  
+  names(df) <- gsub(" |\\.", "_", tolower(names(df)))  
+  col <- paste0(c("\xca(domestic)", ", domestic"), collapse = "|")
   # provide relevant columns for matching
   df <- df %>%
-        dplyr::mutate(vassar_worm = gsub(".*_", "", genomics_sample_id),
-                      host = gsub(",domestic", ", domestic", host))
+      dplyr::mutate(vassar_worm = gsub(".*_", "", genomics_sample_id),
+                    host = gsub(col, " (domestic)", host))
+  
+  # standardize date formats 
+  df <- dplyr::rename(df, 'original_copy'='emergence_date') %>%
+      mutate(
+        original_date = as.Date(original_copy, tryFormats = c("%d/%m/%Y", "%d/%m/%y")),
+        emergence_date = case_when(
+          str_detect(original_date, "\\d{4}-\\d{2}-\\d{2}") ~ lubridate::ymd(original_date),
+          str_detect(original_date, "\\d{2}-\\d{2}-\\d{2}") ~ lubridate::ymd(original_date),
+          TRUE ~ as.Date(NA)  # Handle any dates that don't match either format
+          )
+    ) %>% 
+    dplyr::select(-original_date)
+  
   return(df)
 }   
+
 
 
 # steps from https://stackoverflow.com/questions/30879429/how-can-i-convert-degree-minute-sec-to-decimal-in-r  

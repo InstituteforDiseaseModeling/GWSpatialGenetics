@@ -7,3 +7,7 @@ ngs_processing/input_files/GWmtDNANGSprimers_v1.0_seqkit.fa
 ngs_processing/nextstrain/scripts/metadata_helpers.R
 
 analyses_old
+.Rproj.user
+.Rhistory
+ngs_processing/scripts/.DS_Store
+.DS_Store

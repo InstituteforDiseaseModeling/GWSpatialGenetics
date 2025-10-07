@@ -157,7 +157,7 @@ dplyr::mutate(V1 = gsub(".*NH_|_[ATCG].*", "\\2", V1))
 }
 ```
 
-```{r echo=F}
+```{r echo=F, results='asis'}
 # calculate some stats on the number of aligned reads per sample
 stat.df <- data.frame('Statistic' = c('Total samples', 'Mean', 'Median', 'Range'),
                     Result = c(nrow(align_readCounts), 
@@ -167,7 +167,7 @@ stat.df <- data.frame('Statistic' = c('Total samples', 'Mean', 'Median', 'Range'
 kable(stat.df, caption = "All uniquely aligned reads")
 ```
 
-```{r,  echo=F}
+```{r,  echo=F, results='asis'}
 if(file.exists(file.path(project_dir, "aligned_counts_dedup.txt"))){
   stat.df.dedup <- data.frame('Statistic' = c('Total samples', 'Mean', 'Median', 'Range'),
                       result = c(nrow(align_readCounts_dedup),
